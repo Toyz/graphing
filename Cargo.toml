@@ -1,0 +1,63 @@
+[workspace]
+members = ["crates/*"]
+default-members = ["crates/graphing-bin"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+graphing-model = { path = "crates/graphing-model" }
+graphing-dsl = { path = "crates/graphing-dsl" }
+graphing-scene = { path = "crates/graphing-scene" }
+graphing-package = { path = "crates/graphing-package" }
+graphing-export = { path = "crates/graphing-export" }
+graphing-import = { path = "crates/graphing-import" }
+graphing-app = { path = "crates/graphing-app" }
+graphing-ui = { path = "crates/graphing-ui" }
+graphing-script = { path = "crates/graphing-script" }
+
+gpui-kit = "0.7.0"
+rune = "=0.14.2"
+lsp-types = "0.97"
+zstd = { version = "0.13", default-features = false }
+blake3 = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+smallvec = "1"
+# APNG encoding for animated exports (MIT OR Apache-2.0).
+png = "0.18"
+# GIF encoding with per-frame offsets (MIT OR Apache-2.0).
+gif = "0.14"
+# AV1 video for WebM export, pure Rust without the asm feature (BSD-2-Clause).
+rav1e = { version = "0.8", default-features = false, features = ["threading"] }
+mp4parse = { version = "0.17.0", features = ["unstable-api"] }
+re_rav1d = { version = "0.1.3", default-features = false, features = ["bitdepth_8", "bitdepth_16"] }
+yuv = "0.8.18"
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+schemars = "1"
+dirs = "7"
+resvg = "0.48"
+quick-xml = "0.42"
+flate2 = "1"
+# Visio .vsdx import (zip of XML), deflate through flate2 only (MIT).
+zip = { version = "8", default-features = false, features = ["deflate-flate2"] }
+base64 = "0.23"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+debug = "line-tables-only"
+strip = "debuginfo"

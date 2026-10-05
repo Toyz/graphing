@@ -1,0 +1,23 @@
+# C4 container diagram: who uses the system, what it is made of, what it calls.
+diagram "Internet banking" { kind: c4-container, context: system }
+use c4
+
+customer: c4.person "Customer" { description: "A customer of the bank, with personal accounts" }
+web: c4.webapp "Web app" { technology: "Rust, Axum", description: "Serves the single-page app" }
+spa: c4.container "Single-page app" { technology: "TypeScript, React", description: "Banking in the browser" }
+api: c4.container "API" { technology: "Rust, Axum", description: "Banking over JSON/HTTPS" }
+db: c4.database "Database" { technology: "PostgreSQL", description: "Users, accounts, logs" }
+events: c4.queue "Events" { technology: "NATS", description: "Account activity" }
+mainframe: c4.external-system "Mainframe" { description: "Core banking: accounts and transactions" }
+email: c4.external-system "Email" { description: "Sends notifications" }
+
+group bank "Internet banking" { web spa api db events } { kind: system-boundary }
+
+customer -> web "visits" { kind: uses }
+customer -> spa "views balances, pays" { kind: uses }
+web -> spa "delivers" { kind: uses }
+spa -> api "calls [JSON/HTTPS]" { kind: uses }
+api -> db "reads, writes [SQL]" { kind: uses }
+api -> events "publishes" { kind: async }
+api -> mainframe "uses [XML/HTTPS]" { kind: uses }
+events -> email "notifies" { kind: async }

@@ -1,0 +1,57 @@
+// Example graphing plugin. Copy this folder to ~/.config/graphing/plugins/
+// and run "Reload Plugins"; its commands show up in the palette.
+use graphing::{commands, doc, log, stencils};
+
+pub fn main() {
+    // Shapes can come from a script too, in the same shape as pack.json.
+    stencils::register(#{
+        id: "tools",
+        name: "Tools",
+        stencils: [#{
+            name: "callout",
+            title: "Callout",
+            category: "Annotations",
+            outline: #{ path: "M0 0 H100 V70 H40 L20 100 L24 70 H0 Z", view: [0, 0, 100, 100] },
+            size: [160, 80],
+            defaults: #{ fill: "#fff9db", stroke: "#f08c00" },
+            icon: "MessageSquareQuote",
+        }],
+    })?;
+    commands::register("number-requirements", "Number requirements", number_requirements);
+    commands::register("grid", "Arrange in a grid", grid);
+    log::info("sysml-tools loaded");
+}
+
+/// Give every requirement an id, top to bottom, left to right.
+pub fn number_requirements() {
+    let reqs = [];
+    for n in doc::nodes() {
+        if n.stencil == "sysml.requirement" {
+            reqs.push(n);
+        }
+    }
+    reqs.sort_by(|a, b| if a.y == b.y { a.x.partial_cmp(b.x).unwrap() } else { a.y.partial_cmp(b.y).unwrap() });
+    let i = 1;
+    for r in reqs {
+        doc::set_prop(r.id, "rid", `R${i}`)?;
+        i += 1;
+    }
+    graphing::notify(`numbered ${i - 1} requirements`);
+}
+
+/// Lay the selection (or everything) out in rows of four.
+pub fn grid() {
+    let ids = doc::selection();
+    if ids.len() == 0 {
+        for n in doc::nodes() {
+            ids.push(n.id);
+        }
+    }
+    let i = 0;
+    for id in ids {
+        let col = i % 4;
+        let row = i / 4;
+        doc::move_to(id, (col * 260) as f64, (row * 160) as f64);
+        i += 1;
+    }
+}

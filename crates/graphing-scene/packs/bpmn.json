@@ -1,0 +1,54 @@
+{
+  "id": "bpmn",
+  "name": "BPMN",
+  "icon": "Workflow",
+  "description": "Business processes: events, tasks, gateways, pools",
+  "version": "1",
+  "stencils": [
+    {"name": "start", "title": "Start", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "Circle"},
+    {"name": "start-message", "title": "Message start", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "Mail", "glyph": {"icon": "Mail", "size": 0.5}},
+    {"name": "start-timer", "title": "Timer start", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "Clock", "glyph": {"icon": "Clock", "size": 0.5}},
+    {"name": "start-signal", "title": "Signal start", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "Triangle", "glyph": {"icon": "Triangle", "size": 0.5}},
+    {"name": "intermediate", "title": "Intermediate", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "Circle", "detail": {"path": "M9 50 A41 41 0 1 0 91 50 A41 41 0 1 0 9 50", "view": [0, 0, 100, 100]}},
+    {"name": "catch-message", "title": "Message (catch)", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "Mail", "detail": {"path": "M9 50 A41 41 0 1 0 91 50 A41 41 0 1 0 9 50", "view": [0, 0, 100, 100]}, "glyph": {"icon": "Mail", "size": 0.5}},
+    {"name": "timer", "title": "Timer", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "Clock", "detail": {"path": "M9 50 A41 41 0 1 0 91 50 A41 41 0 1 0 9 50", "view": [0, 0, 100, 100]}, "glyph": {"icon": "Clock", "size": 0.5}},
+    {"name": "error-boundary", "title": "Error (boundary)", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "Zap", "detail": {"path": "M9 50 A41 41 0 1 0 91 50 A41 41 0 1 0 9 50", "view": [0, 0, 100, 100]}, "glyph": {"icon": "Zap", "size": 0.5}},
+    {"name": "escalation", "title": "Escalation", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "ChevronsUp", "detail": {"path": "M9 50 A41 41 0 1 0 91 50 A41 41 0 1 0 9 50", "view": [0, 0, 100, 100]}, "glyph": {"icon": "ChevronsUp", "size": 0.5}},
+    {"name": "end", "title": "End", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "Circle", "weight": 3.5},
+    {"name": "end-message", "title": "Message end", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "Mail", "weight": 3.5, "glyph": {"icon": "Mail", "size": 0.5}},
+    {"name": "end-error", "title": "Error end", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "Zap", "weight": 3.5, "glyph": {"icon": "Zap", "size": 0.5}},
+    {"name": "terminate", "title": "Terminate", "category": "BPMN events", "outline": "ellipse", "label": "below", "size": [36, 36], "icon": "CircleStop", "weight": 3.5, "mark": {"path": "M22 50 A28 28 0 1 0 78 50 A28 28 0 1 0 22 50 Z", "view": [0, 0, 100, 100]}},
+    {"name": "task", "title": "Task", "category": "BPMN activities", "outline": "rounded", "size": [140, 80], "icon": "RectangleHorizontal"},
+    {"name": "user", "title": "User task", "category": "BPMN activities", "outline": "rounded", "size": [140, 80], "icon": "UserRound", "glyph": {"icon": "UserRound", "at": "top-left"}},
+    {"name": "service", "title": "Service task", "category": "BPMN activities", "outline": "rounded", "size": [140, 80], "icon": "Cog", "glyph": {"icon": "Cog", "at": "top-left"}},
+    {"name": "script", "title": "Script task", "category": "BPMN activities", "outline": "rounded", "size": [140, 80], "icon": "ScrollText", "glyph": {"icon": "ScrollText", "at": "top-left"}},
+    {"name": "send", "title": "Send task", "category": "BPMN activities", "outline": "rounded", "size": [140, 80], "icon": "Send", "glyph": {"icon": "Send", "at": "top-left"}},
+    {"name": "receive", "title": "Receive task", "category": "BPMN activities", "outline": "rounded", "size": [140, 80], "icon": "Mail", "glyph": {"icon": "Mail", "at": "top-left"}},
+    {"name": "manual", "title": "Manual task", "category": "BPMN activities", "outline": "rounded", "size": [140, 80], "icon": "Hand", "glyph": {"icon": "Hand", "at": "top-left"}},
+    {"name": "rule", "title": "Business rule task", "category": "BPMN activities", "outline": "rounded", "size": [140, 80], "icon": "Table", "glyph": {"icon": "Table", "at": "top-left"}},
+    {"name": "subprocess", "title": "Subprocess", "category": "BPMN activities", "outline": "rounded", "size": [140, 80], "icon": "SquarePlus", "detail": {"path": "M43 80 H57 V94 H43 Z M50 83 V91 M46 87 H54", "view": [0, 0, 100, 100]}},
+    {"name": "call", "title": "Call activity", "category": "BPMN activities", "outline": "rounded", "size": [140, 80], "icon": "SquareArrowOutUpRight", "weight": 3.5},
+    {"name": "exclusive", "title": "Exclusive gateway", "category": "BPMN gateways", "outline": "diamond", "label": "below", "size": [50, 50], "icon": "Diamond", "detail": {"path": "M36 36 L64 64 M64 36 L36 64", "view": [0, 0, 100, 100]}},
+    {"name": "parallel", "title": "Parallel gateway", "category": "BPMN gateways", "outline": "diamond", "label": "below", "size": [50, 50], "icon": "Diamond", "detail": {"path": "M50 27 V73 M27 50 H73", "view": [0, 0, 100, 100]}},
+    {"name": "inclusive", "title": "Inclusive gateway", "category": "BPMN gateways", "outline": "diamond", "label": "below", "size": [50, 50], "icon": "Diamond", "detail": {"path": "M31 50 A19 19 0 1 0 69 50 A19 19 0 1 0 31 50", "view": [0, 0, 100, 100]}},
+    {"name": "event-gateway", "title": "Event-based gateway", "category": "BPMN gateways", "outline": "diamond", "label": "below", "size": [50, 50], "icon": "Diamond", "detail": {"path": "M28 50 A22 22 0 1 0 72 50 A22 22 0 1 0 28 50 M32 50 A18 18 0 1 0 68 50 A18 18 0 1 0 32 50 M50 37 L62 46 L57 60 H43 L38 46 Z", "view": [0, 0, 100, 100]}},
+    {"name": "complex", "title": "Complex gateway", "category": "BPMN gateways", "outline": "diamond", "label": "below", "size": [50, 50], "icon": "Diamond", "detail": {"path": "M50 28 V72 M28 50 H72 M35 35 L65 65 M65 35 L35 65", "view": [0, 0, 100, 100]}},
+    {"name": "data", "title": "Data object", "category": "BPMN data", "outline": {"path": "M0 0 H68 L100 30 V100 H0 Z", "view": [0, 0, 100, 100]}, "detail": {"path": "M68 0 V30 H100", "view": [0, 0, 100, 100]}, "label": "below", "size": [40, 52], "icon": "File"},
+    {"name": "store", "title": "Data store", "category": "BPMN data", "outline": "cylinder", "label": "below", "size": [56, 50], "icon": "Database"}
+  ],
+  "edge_kinds": [
+    {"name": "sequence", "group": "BPMN", "description": "Sequence flow (order of work)", "head": "arrow"},
+    {"name": "message-flow", "group": "BPMN", "description": "Message between pools (dashed, circle to hollow arrow)", "head": "triangle", "tail": "circle", "dashed": true},
+    {"name": "data-association", "group": "BPMN", "description": "Data in or out of an activity", "head": "open", "dashed": true},
+    {"name": "bpmn-association", "group": "BPMN", "description": "Links annotations and artifacts", "head": "none", "dashed": true}
+  ],
+  "group_kinds": [
+    {"name": "pool", "title": "Pool", "category": "BPMN", "look": "lane", "icon": "Rows3", "description": "One participant: an organisation or system"},
+    {"name": "bpmn-lane", "title": "Lane", "category": "BPMN", "look": "lane", "icon": "PanelTop", "description": "A role or department inside a pool"},
+    {"name": "bpmn-group", "title": "Group", "category": "BPMN", "look": "dashed", "icon": "SquareDashed", "description": "Visual grouping, no meaning for the flow"}
+  ],
+  "diagram_kinds": [
+    {"id": "bpmn", "name": "Process", "context": "process", "description": "One process: events, activities and gateways", "icon": "Workflow"},
+    {"id": "bpmn-collab", "name": "Collaboration", "context": "process", "description": "Pools exchanging messages", "icon": "Handshake"}
+  ]
+}

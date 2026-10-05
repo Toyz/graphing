@@ -1,0 +1,36 @@
+# SysML internal block diagram of the HIL test bench.
+# Parts are typed (role : Type), ports are named, and every connector
+# carries a declared item flow.
+diagram "HIL Test Bench" { kind: ibd, context: block, view: Architecture }
+use sysml
+
+uut: sysml.part "FlightArticle" {
+  parts: ["obc : OnboardComputer { flight build, unmodified }", "adcs : ADCSProcessor", "eps : EPSBoard", "radio : Radio"]
+}
+fe: sysml.part "IOFrontEnd" {
+  parts: ["busEndpoints : SpaceWire, CAN, RS-422, SPI, I2C", "timeMaster : PPSGenerator"]
+}
+sim: sysml.part "RealTimeSimulator" {
+  parts: ["sensors : SensorEmulation", "actuators : ActuatorEmulation", "plant : PlantModels", "env : Environment { 1 kHz }"]
+}
+phys: sysml.part "PhysicalEffects" {
+  parts: ["sas : SolarArraySimulator", "batt : BatteryEmulator", "rf : RFChain { attenuator, Doppler, delay }"]
+}
+gnd: sysml.part "GroundSegment" {
+  parts: ["moc : OpsConsole", "seq : ScenarioSequencer", "arc : Archive"]
+}
+
+uut.busPort -- fe.busPort "SensorFrame, ActuatorCommand" { kind: flow }
+fe.dmaPort -- sim.dmaPort "TruthState, ActuatorCurrent" { kind: flow }
+uut.pwrPort -- phys.pwrPort "BusPower" { kind: flow }
+uut.rfPort -- phys.rfPort "ModulatedRF" { kind: flow }
+phys.downPort -- gnd.downPort "TelemetryFrame" { kind: flow }
+gnd.ctrlPort -- sim.ctrlPort "ScenarioStep, FaultInjection" { kind: flow }
+
+layout {
+  uut 64 92 466x150
+  fe 64 320 466x104
+  sim 64 502 466x150
+  phys 750 92 466x150
+  gnd 750 502 466x150
+}

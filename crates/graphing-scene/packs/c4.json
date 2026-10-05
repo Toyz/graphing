@@ -1,0 +1,35 @@
+{
+  "id": "c4",
+  "name": "C4",
+  "icon": "Container",
+  "description": "People, systems, containers and components (C4 model)",
+  "version": "1",
+  "stencils": [
+    {"name": "person", "title": "Person", "category": "C4", "outline": {"path": "M120 34 A30 30 0 1 1 60 34 A30 30 0 1 1 120 34 Z M34 72 H146 Q180 72 180 106 V140 Q180 170 150 170 H30 Q0 170 0 140 V106 Q0 72 34 72 Z", "view": [0, 0, 180, 170]}, "notes": true, "size": [180, 170], "defaults": {"fill": "#08427b", "stroke": "#073b6f", "color": "#ffffff"}, "fields": [{"key": "description", "format": "{}", "wrap": 30}], "props": [{"key": "description", "label": "Description", "kind": "longtext"}], "label_area": [0, 0.42, 1, 0.58], "icon": "UserRound"},
+    {"name": "system", "title": "Software system", "category": "C4", "outline": "rect", "notes": true, "size": [200, 110], "defaults": {"fill": "#1168bd", "stroke": "#0b4884", "color": "#ffffff"}, "fields": [{"key": "description", "format": "{}", "wrap": 30}], "props": [{"key": "description", "label": "Description", "kind": "longtext"}], "icon": "Box"},
+    {"name": "container", "title": "Container", "category": "C4", "outline": "rect", "notes": true, "size": [200, 110], "defaults": {"fill": "#438dd5", "stroke": "#3c7fc0", "color": "#ffffff"}, "fields": [{"key": "technology", "format": "[Container: {}]"}, {"key": "description", "format": "{}", "wrap": 30}], "props": [{"key": "technology", "label": "Technology"}, {"key": "description", "label": "Description", "kind": "longtext"}], "icon": "Container"},
+    {"name": "database", "title": "Database", "category": "C4", "outline": "cylinder", "notes": true, "size": [200, 120], "defaults": {"fill": "#438dd5", "stroke": "#3c7fc0", "color": "#ffffff"}, "fields": [{"key": "technology", "format": "[Container: {}]"}, {"key": "description", "format": "{}", "wrap": 30}], "props": [{"key": "technology", "label": "Technology"}, {"key": "description", "label": "Description", "kind": "longtext"}], "label_area": [0, 0.18, 1, 0.82], "icon": "Database"},
+    {"name": "queue", "title": "Queue", "category": "C4", "outline": {"path": "M10 0 H90 A10 50 0 0 1 90 100 H10 A10 50 0 0 1 10 0 Z", "view": [0, 0, 100, 100]}, "notes": true, "size": [200, 110], "defaults": {"fill": "#438dd5", "stroke": "#3c7fc0", "color": "#ffffff"}, "fields": [{"key": "technology", "format": "[Container: {}]"}, {"key": "description", "format": "{}", "wrap": 30}], "props": [{"key": "technology", "label": "Technology"}, {"key": "description", "label": "Description", "kind": "longtext"}], "detail": {"path": "M90 0 A10 50 0 0 0 90 100", "view": [0, 0, 100, 100]}, "label_area": [0.08, 0, 0.8, 1], "icon": "ListOrdered"},
+    {"name": "webapp", "title": "Web app", "category": "C4", "outline": "rect", "notes": true, "size": [200, 120], "defaults": {"fill": "#438dd5", "stroke": "#3c7fc0", "color": "#ffffff"}, "fields": [{"key": "technology", "format": "[Container: {}]"}, {"key": "description", "format": "{}", "wrap": 30}], "props": [{"key": "technology", "label": "Technology"}, {"key": "description", "label": "Description", "kind": "longtext"}], "detail": {"path": "M0 16 H100 M5 8 H7 M10 8 H12 M15 8 H17", "view": [0, 0, 100, 100]}, "label_area": [0, 0.16, 1, 0.84], "icon": "AppWindow"},
+    {"name": "component", "title": "Component", "category": "C4", "outline": "rect", "notes": true, "size": [200, 110], "defaults": {"fill": "#85bbf0", "stroke": "#5d9bd5", "color": "#000000"}, "fields": [{"key": "technology", "format": "[Component: {}]"}, {"key": "description", "format": "{}", "wrap": 30}], "props": [{"key": "technology", "label": "Technology"}, {"key": "description", "label": "Description", "kind": "longtext"}], "icon": "Component"},
+    {"name": "external-person", "title": "External person", "category": "C4", "outline": {"path": "M120 34 A30 30 0 1 1 60 34 A30 30 0 1 1 120 34 Z M34 72 H146 Q180 72 180 106 V140 Q180 170 150 170 H30 Q0 170 0 140 V106 Q0 72 34 72 Z", "view": [0, 0, 180, 170]}, "notes": true, "size": [180, 170], "defaults": {"fill": "#686868", "stroke": "#5a5a5a", "color": "#ffffff"}, "fields": [{"key": "description", "format": "{}", "wrap": 30}], "props": [{"key": "description", "label": "Description", "kind": "longtext"}], "label_area": [0, 0.42, 1, 0.58], "icon": "UserRound"},
+    {"name": "external-system", "title": "External system", "category": "C4", "outline": "rect", "notes": true, "size": [200, 110], "defaults": {"fill": "#999999", "stroke": "#8a8a8a", "color": "#ffffff"}, "fields": [{"key": "description", "format": "{}", "wrap": 30}], "props": [{"key": "description", "label": "Description", "kind": "longtext"}], "icon": "Box"}
+  ],
+  "edge_kinds": [
+    {"name": "uses", "group": "C4", "description": "Uses (label: what, [technology])", "head": "arrow", "dashed": true},
+    {"name": "async", "group": "C4", "description": "Sends asynchronously", "head": "open", "dashed": true}
+  ],
+  "group_kinds": [
+    {"name": "enterprise-boundary", "title": "Enterprise boundary", "category": "C4", "look": "dashed", "icon": "Building2", "defaults": {"stroke": "#444444"}, "description": "Everything one organisation owns"},
+    {"name": "system-boundary", "title": "System boundary", "category": "C4", "look": "dashed", "icon": "Box", "defaults": {"stroke": "#0b4884"}, "description": "The containers of one software system"},
+    {"name": "container-boundary", "title": "Container boundary", "category": "C4", "look": "dashed", "icon": "Container", "defaults": {"stroke": "#3c7fc0"}, "description": "The components of one container"},
+    {"name": "deployment-node", "title": "Deployment node", "category": "C4", "look": "card", "icon": "Server", "description": "Where containers run", "props": [{"key": "technology", "label": "Technology"}, {"key": "instances", "label": "Instances"}]}
+  ],
+  "diagram_kinds": [
+    {"id": "c4-landscape", "name": "System landscape", "context": "enterprise", "description": "Every system an organisation runs and who uses them", "icon": "Map"},
+    {"id": "c4-context", "name": "System context", "context": "system", "description": "One system, its users and the systems around it", "icon": "Box"},
+    {"id": "c4-container", "name": "Container", "context": "system", "description": "The apps and data stores inside one system", "icon": "Container"},
+    {"id": "c4-component", "name": "Component", "context": "container", "description": "The components inside one container", "icon": "Component"},
+    {"id": "c4-deployment", "name": "Deployment", "context": "environment", "description": "Where containers run in an environment", "icon": "Server"}
+  ]
+}

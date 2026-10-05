@@ -1,0 +1,19 @@
+# Control block diagram: a speed controller with feedback.
+diagram "Cruise control" { kind: control, context: system }
+use control
+
+ref: control.step "Set speed"
+err: control.sum
+pid: control.pid "PID" { kp: "0.8", ki: "0.2", kd: "0.05" }
+sat: control.saturation
+car: control.transfer "1" { den: "m s + b" }
+speed: control.scope "Speed"
+sensor: control.gain "H"
+
+ref -> err "+" { kind: signal }
+err -> pid "e" { kind: signal }
+pid -> sat "u" { kind: signal }
+sat -> car { kind: signal }
+car -> speed "v" { kind: signal }
+car -> sensor { kind: feedback }
+sensor -> err "-" { kind: feedback }

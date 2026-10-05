@@ -1,0 +1,24 @@
+# Fault tree: why the vehicle loses braking.
+diagram "Loss of braking" { kind: fta, context: hazard }
+use fta
+
+top: fta.event "Loss of braking" { probability: "1.2e-7 / h" }
+g1: fta.or "G1"
+hyd: fta.event "Hydraulic failure"
+ctl: fta.event "Brake controller fails"
+g2: fta.and "G2"
+leak: fta.basic "Line leak"
+pump: fta.basic "Pump fails"
+ecu: fta.basic "ECU fault"
+sw: fta.undeveloped "Software defect"
+g3: fta.or "G3"
+
+top -> g1 { kind: fault }
+g1 -> hyd { kind: fault }
+g1 -> ctl { kind: fault }
+hyd -> g2 { kind: fault }
+g2 -> leak { kind: fault }
+g2 -> pump { kind: fault }
+ctl -> g3 { kind: fault }
+g3 -> ecu { kind: fault }
+g3 -> sw { kind: fault }

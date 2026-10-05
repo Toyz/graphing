@@ -1,0 +1,22 @@
+[package]
+name = "graphing-bin"
+description = "graphing executable and CLI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "graphing"
+path = "src/main.rs"
+
+[dependencies]
+graphing-app.workspace = true
+graphing-dsl.workspace = true
+graphing-model.workspace = true
+graphing-scene.workspace = true
+graphing-export.workspace = true
+graphing-import.workspace = true
+graphing-package.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tracing-subscriber.workspace = true

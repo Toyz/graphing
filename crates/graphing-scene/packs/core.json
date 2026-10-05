@@ -1,0 +1,42 @@
+{
+  "id": "core",
+  "name": "Core",
+  "icon": "Shapes",
+  "description": "Boxes, notes, flowchart steps and plain containers",
+  "version": "1",
+  "stencils": [
+    { "name": "rect", "title": "Rectangle", "category": "Basic", "outline": "rect", "aliases": ["rectangle", "box", "square"], "icon": "Square" },
+    { "name": "rounded", "title": "Rounded", "category": "Basic", "outline": "rounded", "aliases": ["service"], "icon": "RectangleHorizontal" },
+    { "name": "ellipse", "title": "Ellipse", "category": "Basic", "outline": "ellipse", "aliases": ["circle", "oval"], "icon": "Circle" },
+    { "name": "note", "title": "Note", "category": "Basic", "outline": "note", "aliases": ["comment"], "icon": "StickyNote" },
+    { "name": "image", "title": "Image", "category": "Basic", "outline": "rect", "header": "none", "size": [240, 160], "icon": "Image", "aliases": ["picture", "img"], "props": [{ "key": "src", "label": "Source" }, { "key": "fit", "label": "Fit" }] },
+    { "name": "actor", "title": "Actor", "category": "Basic", "outline": "actor", "aliases": ["person", "user"], "icon": "UserRound" },
+    { "name": "package", "title": "Package", "category": "Basic", "outline": "package", "aliases": ["pkg", "folder"], "icon": "Folder" },
+    { "name": "ref", "title": "Diagram link", "category": "Basic", "outline": "rounded", "render": "ref", "size": [260, 180], "aliases": ["link", "diagram"], "icon": "FileSymlink", "glyph": { "icon": "SquareArrowOutUpRight", "at": "top-right" }, "props": [{ "key": "src", "label": "Diagram file" }] },
+
+    { "name": "process", "title": "Process", "category": "Flowchart", "outline": "rounded", "icon": "RectangleHorizontal" },
+    { "name": "decision", "title": "Decision", "category": "Flowchart", "outline": "diamond", "aliases": ["diamond", "choice"], "icon": "Diamond" },
+    { "name": "io", "title": "Data", "category": "Flowchart", "outline": "parallelogram", "aliases": ["data", "parallelogram"], "icon": "Slash" },
+    { "name": "db", "title": "Database", "category": "Flowchart", "outline": "cylinder", "aliases": ["database", "cylinder", "store"], "icon": "Cylinder" },
+    { "name": "prep", "title": "Preparation", "category": "Flowchart", "outline": "hexagon", "aliases": ["hexagon"], "icon": "Hexagon" },
+    { "name": "terminal", "title": "Terminal", "category": "Flowchart", "outline": "ellipse", "aliases": ["start", "end"], "icon": "Circle" },
+
+    { "name": "block", "title": "Block", "outline": "block", "hidden": true, "aliases": ["class"], "icon": "Box" },
+    { "name": "initial", "title": "Initial", "outline": "initial", "header": "none", "size": [28, 28], "hidden": true, "icon": "CircleDot" },
+    { "name": "final", "title": "Final", "outline": "final", "header": "none", "size": [28, 28], "hidden": true, "icon": "CircleStop" },
+    { "name": "bar", "title": "Bar", "outline": "bar", "header": "none", "size": [120, 8], "hidden": true, "aliases": ["fork", "join"], "icon": "Minus" },
+    { "name": "lifeline", "title": "Lifeline", "outline": "lifeline", "hidden": true, "icon": "GitCommitVertical" }
+  ],
+  "edge_kinds": [
+    { "name": "connector", "group": "General", "description": "Plain connector", "head": "none", "tail": "none" },
+    { "name": "association", "group": "General", "description": "Structural relationship", "head": "none", "tail": "none" },
+    { "name": "dependency", "group": "General", "description": "Uses (dashed, open arrow)", "head": "open", "dashed": true }
+  ],
+  "group_kinds": [
+    { "name": "group", "title": "Group", "category": "General", "look": "dashed", "icon": "SquareDashed", "description": "Dashed outline" },
+    { "name": "box", "title": "Solid group", "category": "General", "look": "solid", "icon": "Square", "description": "Solid outline" },
+    { "name": "lane", "title": "Swimlane", "category": "General", "look": "lane", "icon": "PanelTop", "description": "Header band, for lanes and stages" },
+    { "name": "zone", "title": "Zone", "category": "General", "look": "zone", "icon": "Layers", "description": "Tinted area, no border" },
+    { "name": "card", "title": "Card", "category": "General", "look": "card", "icon": "PanelsTopLeft", "description": "Raised panel with a header rule" }
+  ]
+}

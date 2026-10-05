@@ -1,0 +1,21 @@
+[package]
+name = "graphing-export"
+description = "scene -> SVG and PNG"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+graphing-model.workspace = true
+graphing-scene.workspace = true
+graphing-dsl.workspace = true
+graphing-package.workspace = true
+resvg.workspace = true
+thiserror.workspace = true
+base64.workspace = true
+gif.workspace = true
+png.workspace = true
+rav1e.workspace = true
+
+[dev-dependencies]
+graphing-import.workspace = true

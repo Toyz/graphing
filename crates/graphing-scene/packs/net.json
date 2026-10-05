@@ -1,0 +1,39 @@
+{
+  "id": "net",
+  "name": "Network",
+  "icon": "Router",
+  "description": "Routers, switches, firewalls and devices",
+  "version": "1",
+  "stencils": [
+    {"name": "router", "title": "Router", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Router", "size": 0.5}, "icon": "Router", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "switch", "title": "Switch", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Network", "size": 0.5}, "icon": "Network", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "firewall", "title": "Firewall", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "BrickWall", "size": 0.5}, "icon": "BrickWall", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "lb", "title": "Load balancer", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Split", "size": 0.5}, "icon": "Split", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}], "aliases": ["load-balancer"]},
+    {"name": "server", "title": "Server", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Server", "size": 0.5}, "icon": "Server", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "desktop", "title": "Desktop", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Monitor", "size": 0.5}, "icon": "Monitor", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "laptop", "title": "Laptop", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Laptop", "size": 0.5}, "icon": "Laptop", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "phone", "title": "Phone", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Smartphone", "size": 0.5}, "icon": "Smartphone", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "ap", "title": "Access point", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Wifi", "size": 0.5}, "icon": "Wifi", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}], "aliases": ["wifi"]},
+    {"name": "cloud", "title": "Cloud", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Cloud", "size": 0.5}, "icon": "Cloud", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "internet", "title": "Internet", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Globe", "size": 0.5}, "icon": "Globe", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "database", "title": "Database", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Database", "size": 0.5}, "icon": "Database", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "storage", "title": "Storage", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "HardDrive", "size": 0.5}, "icon": "HardDrive", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "dns", "title": "DNS", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Signpost", "size": 0.5}, "icon": "Signpost", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "cdn", "title": "CDN", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Zap", "size": 0.5}, "icon": "Zap", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "vpn", "title": "VPN gateway", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "ShieldCheck", "size": 0.5}, "icon": "ShieldCheck", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "queue", "title": "Queue", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "ListOrdered", "size": 0.5}, "icon": "ListOrdered", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "container", "title": "Container", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Container", "size": 0.5}, "icon": "Container", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "iot", "title": "IoT device", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Cpu", "size": 0.5}, "icon": "Cpu", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "camera", "title": "Camera", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Cctv", "size": 0.5}, "icon": "Cctv", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "printer", "title": "Printer", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "Printer", "size": 0.5}, "icon": "Printer", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]},
+    {"name": "user", "title": "User", "category": "Network devices", "outline": "rounded", "label": "below", "size": [64, 64], "glyph": {"icon": "UserRound", "size": 0.5}, "icon": "UserRound", "notes": true, "props": [{"key": "ip", "label": "IP address"}, {"key": "model", "label": "Model"}]}
+  ],
+  "edge_kinds": [
+    {"name": "link", "group": "Network", "description": "Cable (label: speed or VLAN)", "head": "none", "tail": "none"},
+    {"name": "wireless", "group": "Network", "description": "Wireless link", "head": "none", "tail": "none", "dashed": true},
+    {"name": "tunnel", "group": "Network", "description": "VPN or overlay tunnel", "head": "none", "tail": "none", "dashed": true, "stereotype": "tunnel"}
+  ],
+  "diagram_kinds": [
+    {"id": "network", "name": "Network", "context": "site", "description": "Devices, links and the zones they sit in", "icon": "Network"}
+  ]
+}

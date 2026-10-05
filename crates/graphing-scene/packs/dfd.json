@@ -1,0 +1,26 @@
+{
+  "id": "dfd",
+  "name": "Data flow",
+  "icon": "ShieldAlert",
+  "description": "Data flow diagrams and threat models",
+  "version": "1",
+  "stencils": [
+    {"name": "process", "title": "Process", "category": "Data flow", "outline": "ellipse", "size": [130, 90], "icon": "Circle", "props": [{"key": "threats", "label": "Threats (STRIDE)", "kind": "list"}, {"key": "trust", "label": "Trust level"}]},
+    {"name": "multiprocess", "title": "Complex process", "category": "Data flow", "outline": "ellipse", "size": [130, 90], "detail": {"path": "M6 50 A44 44 0 1 0 94 50 A44 44 0 1 0 6 50", "view": [0, 0, 100, 100]}, "icon": "CircleDot"},
+    {"name": "external", "title": "External entity", "category": "Data flow", "outline": "rect", "size": [140, 60], "weight": 2, "icon": "Square"},
+    {"name": "store", "title": "Data store", "category": "Data flow", "outline": "rect", "size": [170, 44], "detail": {"path": "M18 0 V100", "view": [0, 0, 100, 100]}, "label_area": [0.18, 0, 0.82, 1], "icon": "Database", "props": [{"key": "sensitivity", "label": "Data sensitivity"}]}
+  ],
+  "edge_kinds": [
+    {"name": "dataflow", "group": "Data flow", "description": "Data moving between elements (label: what)", "head": "arrow"},
+    {"name": "dataflow-both", "group": "Data flow", "description": "Data moving both ways", "head": "arrow", "tail": "arrow"}
+  ],
+  "group_kinds": [
+    {"name": "trust-boundary", "title": "Trust boundary", "category": "Data flow", "look": "dashed", "icon": "ShieldAlert", "defaults": {"stroke": "#e03131"}, "description": "Where trust changes: check every flow that crosses it"},
+    {"name": "process-boundary", "title": "Process boundary", "category": "Data flow", "look": "card", "icon": "Cpu", "description": "One running process or machine"},
+    {"name": "network-zone", "title": "Network zone", "category": "Data flow", "look": "zone", "icon": "Network", "defaults": {"fill": "#4dabf7"}, "description": "Internet, DMZ, internal"}
+  ],
+  "diagram_kinds": [
+    {"id": "dfd", "name": "Data flow", "context": "system", "description": "Processes, stores and the data between them", "icon": "Workflow"},
+    {"id": "threat", "name": "Threat model", "context": "system", "description": "Data flows across trust boundaries, with threats", "icon": "ShieldAlert"}
+  ]
+}

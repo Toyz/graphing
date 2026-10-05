@@ -1,0 +1,92 @@
+{
+  "id": "sysml",
+  "name": "SysML",
+  "icon": "Box",
+  "description": "Blocks, requirements, activities and state machines",
+  "version": "1",
+  "stencils": [
+    { "name": "block", "title": "Block", "category": "SysML structure", "outline": "block", "stereotype": "block", "icon": "Box",
+      "props": [
+        { "key": "stereotype", "label": "Stereotype" },
+        { "key": "values", "label": "Values", "kind": "list" },
+        { "key": "parts", "label": "Parts", "kind": "list" },
+        { "key": "references", "label": "References", "kind": "list" },
+        { "key": "operations", "label": "Operations", "kind": "list" },
+        { "key": "ports", "label": "Ports", "kind": "list" },
+        { "key": "constraints", "label": "Constraints", "kind": "list" }
+      ] },
+    { "name": "part", "title": "Part", "category": "SysML structure", "outline": "block", "header": "role", "icon": "Boxes",
+      "props": [
+        { "key": "stereotype", "label": "Stereotype" },
+        { "key": "parts", "label": "Parts", "kind": "list" },
+        { "key": "values", "label": "Values", "kind": "list" },
+        { "key": "ports", "label": "Ports", "kind": "list" }
+      ] },
+    { "name": "interface", "title": "Interface", "category": "SysML structure", "outline": "block", "stereotype": "interface block", "icon": "Plug",
+      "props": [{ "key": "ports", "label": "Ports", "kind": "list" }, { "key": "flows", "label": "Flows", "kind": "list" }, { "key": "operations", "label": "Operations", "kind": "list" }] },
+    { "name": "constraint", "title": "Constraint", "category": "SysML structure", "outline": "block", "stereotype": "constraint", "icon": "Sigma",
+      "props": [{ "key": "constraints", "label": "Constraints", "kind": "list" }, { "key": "parameters", "label": "Parameters", "kind": "list" }],
+      "compartments": ["constraints", "parameters"] },
+    { "name": "valuetype", "title": "Value type", "category": "SysML structure", "outline": "block", "stereotype": "valueType", "icon": "Ruler",
+      "props": [{ "key": "values", "label": "Values", "kind": "list" }] },
+    { "name": "package", "title": "Package", "category": "SysML structure", "outline": "package", "icon": "Package" },
+
+    { "name": "requirement", "title": "Requirement", "category": "Requirements", "outline": "block", "stereotype": "requirement", "icon": "ListChecks",
+      "fields": [{ "key": "rid", "format": "id = \"{}\"" }, { "key": "text", "format": "text = \"{}\"", "wrap": 44 }],
+      "props": [{ "key": "rid", "label": "Requirement id" }, { "key": "text", "label": "Text", "kind": "longtext" }, { "key": "stereotype", "label": "Stereotype" }] },
+    { "name": "testcase", "title": "Test case", "category": "Requirements", "outline": "block", "stereotype": "testCase", "icon": "FlaskConical",
+      "props": [{ "key": "stereotype", "label": "Stereotype" }, { "key": "operations", "label": "Steps", "kind": "list" }] },
+    { "name": "rationale", "title": "Rationale", "category": "Requirements", "outline": "note", "stereotype": "rationale", "icon": "StickyNote" },
+
+    { "name": "action", "title": "Action", "category": "Behavior", "outline": "rounded", "icon": "Play" },
+    { "name": "state", "title": "State", "category": "Behavior", "outline": "rounded", "icon": "Repeat",
+      "fields": [{ "key": "entry", "format": "entry / {}" }, { "key": "do", "format": "do / {}" }, { "key": "exit", "format": "exit / {}" }],
+      "props": [{ "key": "entry", "label": "Entry" }, { "key": "do", "label": "Do" }, { "key": "exit", "label": "Exit" }] },
+    { "name": "initial", "title": "Initial", "category": "Behavior", "outline": "initial", "header": "none", "size": [28, 28], "icon": "CircleDot" },
+    { "name": "final", "title": "Final", "category": "Behavior", "outline": "final", "header": "none", "size": [28, 28], "icon": "CircleStop" },
+    { "name": "decision", "title": "Decision", "category": "Behavior", "outline": "diamond", "header": "none", "size": [40, 40], "aliases": ["merge"], "icon": "Diamond" },
+    { "name": "fork", "title": "Fork / join", "category": "Behavior", "outline": "bar", "header": "none", "size": [120, 8], "aliases": ["join"], "icon": "Minus" },
+
+    { "name": "actor", "title": "Actor", "category": "Interaction", "outline": "actor", "icon": "UserRound" },
+    { "name": "usecase", "title": "Use case", "category": "Interaction", "outline": "ellipse", "icon": "Circle" },
+    { "name": "lifeline", "title": "Lifeline", "category": "Interaction", "outline": "lifeline", "icon": "GitCommitVertical" }
+  ],
+  "edge_kinds": [
+    { "name": "composition", "group": "Structure", "description": "Whole owns the part (filled diamond)", "head": "none", "tail": "filled-diamond" },
+    { "name": "aggregation", "group": "Structure", "description": "Shared part (hollow diamond)", "head": "none", "tail": "diamond" },
+    { "name": "generalization", "group": "Structure", "description": "Is a kind of (hollow triangle)", "head": "triangle", "tail": "none" },
+    { "name": "realization", "group": "Structure", "description": "Implements (dashed, triangle)", "head": "triangle", "dashed": true },
+    { "name": "flow", "group": "Structure", "description": "Item flow between ports", "stereotype": "flow" },
+    { "name": "satisfy", "group": "Requirements", "description": "Design satisfies requirement", "head": "open", "dashed": true, "stereotype": "satisfy" },
+    { "name": "verify", "group": "Requirements", "description": "Test verifies requirement", "head": "open", "dashed": true, "stereotype": "verify" },
+    { "name": "derive", "group": "Requirements", "description": "Requirement derived from another", "head": "open", "dashed": true, "stereotype": "deriveReqt" },
+    { "name": "refine", "group": "Requirements", "description": "Adds detail to a requirement", "head": "open", "dashed": true, "stereotype": "refine" },
+    { "name": "trace", "group": "Requirements", "description": "General trace link", "head": "open", "dashed": true, "stereotype": "trace" },
+    { "name": "containment", "group": "Requirements", "description": "Nested requirement", "head": "none", "tail": "circle" },
+    { "name": "allocate", "group": "Requirements", "description": "Allocated to", "head": "open", "dashed": true, "stereotype": "allocate" },
+    { "name": "transition", "group": "Behavior", "description": "State change: trigger [guard] / effect", "head": "open" },
+    { "name": "objectflow", "group": "Behavior", "description": "Object flow between actions", "head": "open" },
+    { "name": "include", "group": "Behavior", "description": "Use case includes another", "head": "open", "dashed": true, "stereotype": "include" },
+    { "name": "extend", "group": "Behavior", "description": "Use case extends another", "head": "open", "dashed": true, "stereotype": "extend" },
+    { "name": "reply", "group": "Behavior", "description": "Sequence reply (dashed)", "head": "open", "dashed": true },
+    { "name": "async", "group": "Behavior", "description": "Asynchronous message", "head": "open" }
+  ],
+  "diagram_kinds": [
+    { "id": "ibd", "name": "Internal block", "context": "block", "description": "Parts, ports and connectors inside one block", "icon": "Cable" },
+    { "id": "bdd", "name": "Block definition", "context": "package", "description": "Blocks and how they compose and specialize", "icon": "Boxes" },
+    { "id": "req", "name": "Requirements", "context": "package", "description": "Requirements and what satisfies or verifies them", "icon": "ListChecks" },
+    { "id": "act", "name": "Activity", "context": "activity", "description": "Actions, decisions and flows of control or objects", "icon": "Workflow" },
+    { "id": "stm", "name": "State machine", "context": "block", "description": "States and the events that move between them", "icon": "Repeat" },
+    { "id": "sd", "name": "Sequence", "context": "interaction", "description": "Messages between lifelines over time", "icon": "MessagesSquare" },
+    { "id": "uc", "name": "Use case", "context": "package", "description": "Actors and the goals a system serves", "icon": "Users" },
+    { "id": "pkg", "name": "Package", "context": "package", "description": "How the model is organized into packages", "icon": "Package" },
+    { "id": "par", "name": "Parametric", "context": "block", "description": "Constraints binding values together", "icon": "Sigma" }
+  ],
+  "group_kinds": [
+    { "name": "block-boundary", "title": "Block boundary", "category": "SysML", "look": "sysml", "stereotype": "block", "icon": "Box", "description": "A block whose parts sit inside it" },
+    { "name": "subsystem", "title": "Subsystem", "category": "SysML", "look": "sysml", "stereotype": "subsystem", "icon": "Boxes", "description": "A subsystem boundary" },
+    { "name": "system-context", "title": "System context", "category": "SysML", "look": "sysml", "stereotype": "system", "icon": "Target", "description": "The system of interest" },
+    { "name": "package", "title": "Package", "category": "SysML", "look": "package", "icon": "Folder", "description": "Model package with a name tab" },
+    { "name": "boundary", "title": "System boundary", "category": "SysML", "look": "solid", "icon": "Square", "description": "Use case subject boundary" }
+  ]
+}

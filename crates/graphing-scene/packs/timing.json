@@ -1,0 +1,21 @@
+{
+  "id": "timing",
+  "name": "Timing",
+  "icon": "ChartLine",
+  "description": "Digital timing diagrams from WaveDrom-style wave strings",
+  "version": "1",
+  "stencils": [
+    {"name": "signal", "title": "Signal", "category": "Timing", "render": "wave", "outline": "rect", "size": [560, 40], "label_area": [0, 0, 0.18, 1], "icon": "ChartLine", "defaults": {"wave": "0.1..0.."}, "props": [{"key": "wave", "label": "Wave (0 1 p n x z = .)"}, {"key": "data", "label": "Data labels", "kind": "list"}]},
+    {"name": "clock", "title": "Clock", "category": "Timing", "render": "wave", "outline": "rect", "size": [560, 40], "label_area": [0, 0, 0.18, 1], "icon": "Activity", "defaults": {"wave": "p.......", "stroke": "#7950f2"}, "props": [{"key": "wave", "label": "Wave (0 1 p n x z = .)"}]},
+    {"name": "bus", "title": "Bus", "category": "Timing", "render": "wave", "outline": "rect", "size": [560, 40], "label_area": [0, 0, 0.18, 1], "icon": "Binary", "defaults": {"wave": "x=.=.=x.", "data": ["A", "B", "C"]}, "props": [{"key": "wave", "label": "Wave (0 1 p n x z = .)"}, {"key": "data", "label": "Data labels", "kind": "list"}]}
+  ],
+  "edge_kinds": [
+    {"name": "causes", "group": "Timing", "description": "One edge causes another (dashed arrow)", "head": "arrow", "dashed": true}
+  ],
+  "group_kinds": [
+    {"name": "signal-group", "title": "Signal group", "category": "Timing", "look": "lane", "icon": "Rows3", "description": "Signals of one interface (SPI, I2C)"}
+  ],
+  "diagram_kinds": [
+    {"id": "timing", "name": "Timing", "context": "interface", "description": "Signals over time: clocks, levels and buses", "icon": "ChartLine"}
+  ]
+}

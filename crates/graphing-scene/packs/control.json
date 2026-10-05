@@ -1,0 +1,42 @@
+{
+  "id": "control",
+  "name": "Control",
+  "icon": "Activity",
+  "description": "Signal block diagrams: gains, sums, transfer functions",
+  "version": "1",
+  "stencils": [
+    {"name": "gain", "title": "Gain", "category": "Control", "outline": {"path": "M0 0 L100 50 L0 100 Z", "view": [0, 0, 100, 100]}, "label_area": [0, 0.2, 0.62, 0.6], "size": [70, 60], "icon": "Triangle"},
+    {"name": "sum", "title": "Sum", "category": "Control", "outline": "ellipse", "header": "none", "size": [36, 36], "detail": {"path": "M22 22 L78 78 M78 22 L22 78", "view": [0, 0, 100, 100]}, "icon": "CirclePlus"},
+    {"name": "sigma", "title": "Sum (labelled)", "category": "Control", "outline": "ellipse", "size": [44, 44], "icon": "Sigma"},
+    {"name": "product", "title": "Product", "category": "Control", "outline": "ellipse", "header": "none", "size": [36, 36], "detail": {"path": "M30 30 L70 70 M70 30 L30 70 M50 22 V78", "view": [0, 0, 100, 100]}, "icon": "CircleX"},
+    {"name": "integrator", "title": "Integrator", "category": "Control", "outline": "rect", "size": [90, 56], "icon": "SquareFunction"},
+    {"name": "derivative", "title": "Derivative", "category": "Control", "outline": "rect", "size": [90, 56], "icon": "SquareFunction"},
+    {"name": "transfer", "title": "Transfer function", "category": "Control", "outline": "rect", "size": [130, 64], "icon": "SquareFunction", "detail": {"path": "M20 50 H80", "view": [0, 0, 100, 100]}, "notes": true, "fields": [{"key": "den", "format": "{}"}], "props": [{"key": "den", "label": "Denominator"}]},
+    {"name": "delay", "title": "Unit delay", "category": "Control", "outline": "rect", "size": [90, 56], "icon": "Timer"},
+    {"name": "saturation", "title": "Saturation", "category": "Control", "outline": "rect", "size": [60, 56], "icon": "ChartSpline", "header": "none", "detail": {"path": "M10 50 H90 M50 10 V90 M15 72 H36 L64 28 H85", "view": [0, 0, 100, 100]}},
+    {"name": "deadzone", "title": "Dead zone", "category": "Control", "outline": "rect", "size": [60, 56], "icon": "ChartSpline", "header": "none", "detail": {"path": "M10 50 H90 M50 10 V90 M15 75 L40 50 H60 L85 25", "view": [0, 0, 100, 100]}},
+    {"name": "relay", "title": "Relay", "category": "Control", "outline": "rect", "size": [60, 56], "icon": "ChartSpline", "header": "none", "detail": {"path": "M10 50 H90 M50 10 V90 M15 72 H56 V28 H85 M44 72 V28", "view": [0, 0, 100, 100]}},
+    {"name": "pid", "title": "PID", "category": "Control", "outline": "rect", "size": [110, 70], "icon": "SlidersHorizontal", "notes": true, "fields": [{"key": "kp", "format": "Kp {}"}, {"key": "ki", "format": "Ki {}"}, {"key": "kd", "format": "Kd {}"}], "props": [{"key": "kp", "label": "Kp"}, {"key": "ki", "label": "Ki"}, {"key": "kd", "label": "Kd"}]},
+    {"name": "plant", "title": "Plant", "category": "Control", "outline": "rect", "size": [130, 70], "icon": "Factory", "weight": 2},
+    {"name": "sensor", "title": "Sensor", "category": "Control", "outline": "rect", "size": [110, 56], "icon": "Gauge", "glyph": {"icon": "Gauge", "at": "top-right"}},
+    {"name": "actuator", "title": "Actuator", "category": "Control", "outline": "rect", "size": [110, 56], "icon": "Cog", "glyph": {"icon": "Cog", "at": "top-right"}},
+    {"name": "step", "title": "Step", "category": "Control", "outline": "rect", "size": [56, 50], "icon": "ChartLine", "label": "below", "detail": {"path": "M15 75 H48 V25 H85", "view": [0, 0, 100, 100]}},
+    {"name": "sine", "title": "Sine wave", "category": "Control", "outline": "rect", "size": [56, 50], "icon": "ChartSpline", "label": "below", "detail": {"path": "M12 50 Q31 5 50 50 T88 50", "view": [0, 0, 100, 100]}},
+    {"name": "constant", "title": "Constant", "category": "Control", "outline": "rect", "size": [70, 44], "icon": "Hash"},
+    {"name": "scope", "title": "Scope", "category": "Control", "outline": "rect", "size": [60, 54], "icon": "ChartLine", "label": "below", "detail": {"path": "M14 14 H86 V72 H14 Z M20 58 Q35 26 50 44 T80 28", "view": [0, 0, 100, 100]}},
+    {"name": "mux", "title": "Mux", "category": "Control", "outline": "rect", "header": "none", "size": [8, 90], "mark": {"path": "M0 0 H100 V100 H0 Z", "view": [0, 0, 100, 100]}, "icon": "Minus"},
+    {"name": "demux", "title": "Demux", "category": "Control", "outline": "rect", "header": "none", "size": [8, 90], "mark": {"path": "M0 0 H100 V100 H0 Z", "view": [0, 0, 100, 100]}, "icon": "Minus"},
+    {"name": "branch", "title": "Branch point", "category": "Control", "outline": "ellipse", "header": "none", "size": [8, 8], "mark": {"path": "M0 50 A50 50 0 1 0 100 50 A50 50 0 1 0 0 50 Z", "view": [0, 0, 100, 100]}, "icon": "Dot"}
+  ],
+  "edge_kinds": [
+    {"name": "signal", "group": "Control", "description": "Signal (label it, or + / - into a sum)", "head": "arrow"},
+    {"name": "feedback", "group": "Control", "description": "Feedback path", "head": "arrow"}
+  ],
+  "group_kinds": [
+    {"name": "control-subsystem", "title": "Subsystem", "category": "Control", "look": "solid", "icon": "SquareDashedBottom", "description": "Blocks grouped into one"},
+    {"name": "loop", "title": "Control loop", "category": "Control", "look": "dashed", "icon": "RefreshCw", "description": "One loop of a cascaded controller"}
+  ],
+  "diagram_kinds": [
+    {"id": "control", "name": "Block diagram", "context": "system", "description": "Signals through gains, sums and transfer functions", "icon": "Activity"}
+  ]
+}

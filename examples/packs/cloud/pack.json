@@ -1,0 +1,37 @@
+{
+  "id": "cloud",
+  "name": "Cloud",
+  "version": "0.1.0",
+  "stencils": [
+    {
+      "name": "function", "title": "Function", "category": "Cloud",
+      "outline": { "path": "M12 0 H88 L100 50 L88 100 H12 L0 50 Z", "view": [0, 0, 100, 100] },
+      "size": [150, 60], "icon": "Zap",
+      "defaults": { "fill": "#fff4e6", "stroke": "#f08c00" },
+      "props": [{ "key": "runtime", "label": "Runtime" }, { "key": "memory", "label": "Memory" }],
+      "fields": [{ "key": "runtime", "format": "{}" }]
+    },
+    {
+      "name": "bucket", "title": "Bucket", "category": "Cloud",
+      "outline": { "path": "M0 12 Q50 -4 100 12 L88 92 Q50 108 12 92 Z", "view": [0, 0, 100, 100] },
+      "size": [110, 80], "icon": "Archive",
+      "defaults": { "fill": "#ebfbee", "stroke": "#2f9e44" }
+    },
+    {
+      "name": "queue", "title": "Queue", "category": "Cloud",
+      "outline": { "path": "M14 0 H86 A14 50 0 0 1 86 100 H14 A14 50 0 0 1 14 0 Z", "view": [0, 0, 100, 100] },
+      "size": [160, 50], "icon": "ListOrdered",
+      "defaults": { "fill": "#f3f0ff", "stroke": "#7048e8" }
+    },
+    {
+      "name": "cloud", "title": "Cloud", "category": "Cloud",
+      "outline": { "path": "M24 86 C2 86 2 52 22 50 C18 22 52 10 66 30 C86 18 104 40 92 58 C108 66 100 88 82 86 Z", "view": [0, 0, 104, 100] },
+      "size": [150, 100], "icon": "Cloud",
+      "defaults": { "fill": "#e7f5ff", "stroke": "#1c7ed6" }
+    }
+  ],
+  "edge_kinds": [
+    { "name": "invokes", "group": "Cloud", "description": "Calls synchronously", "head": "arrow" },
+    { "name": "publishes", "group": "Cloud", "description": "Sends an event (dashed)", "head": "open", "dashed": true, "stereotype": "event" }
+  ]
+}

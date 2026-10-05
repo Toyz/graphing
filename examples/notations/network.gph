@@ -1,0 +1,27 @@
+# Network: an office with a DMZ.
+diagram "Office network" { kind: network, context: site }
+use net, infra
+
+internet: net.internet "Internet"
+fw: net.firewall "Firewall" { ip: "203.0.113.1" }
+web: net.server "Web" { ip: "10.0.1.10" }
+lb: net.lb "Load balancer"
+core: net.switch "Core switch"
+ap: net.ap "Wi-Fi"
+pc: net.desktop "Desk 12"
+laptop: net.laptop "Laptop"
+nas: net.storage "NAS"
+printer: net.printer "Printer"
+
+group dmz "DMZ" { lb web } { kind: dmz }
+group office "Office LAN" { core ap pc laptop nas printer } { kind: subnet }
+
+internet -> fw { kind: link }
+fw -> lb { kind: link }
+lb -> web { kind: link }
+fw -> core "1 Gb/s" { kind: link }
+core -> ap { kind: link }
+core -> pc { kind: link }
+core -> nas { kind: link }
+core -> printer { kind: link }
+ap -> laptop { kind: wireless }

@@ -1,0 +1,15 @@
+[package]
+name = "graphing-import"
+description = "mermaid, draw.io, SysML v2 and Visio -> .gph source"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+graphing-model.workspace = true
+graphing-dsl.workspace = true
+quick-xml.workspace = true
+flate2.workspace = true
+zip.workspace = true
+base64.workspace = true
+thiserror.workspace = true

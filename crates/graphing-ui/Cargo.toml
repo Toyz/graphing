@@ -1,0 +1,9 @@
+[package]
+name = "graphing-ui"
+description = "design system: tokens, theme and the component kit every surface is built from"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gpui-kit.workspace = true

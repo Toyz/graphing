@@ -1,0 +1,18 @@
+# Org chart.
+diagram "Engineering" { kind: org, context: organisation }
+use org
+
+cto: org.person "Ada Park" { title: "CTO" }
+plat: org.person "Sam Lee" { title: "Head of platform" }
+prod: org.person "Rui Costa" { title: "Head of product eng" }
+infra: org.team "Infrastructure" { lead: "Kim" }
+data: org.team "Data" { lead: "Noor" }
+web: org.team "Web" { lead: "Jo" }
+hire: org.vacancy "Staff engineer"
+
+cto -> plat { kind: reports-to }
+cto -> prod { kind: reports-to }
+plat -> infra { kind: reports-to }
+plat -> data { kind: reports-to }
+prod -> web { kind: reports-to }
+prod -> hire { kind: dotted-line }

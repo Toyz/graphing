@@ -1,0 +1,25 @@
+# Event storming: placing an order, left to right in time.
+diagram "Checkout" { kind: eventstorm, context: domain }
+use es
+
+buyer: es.actor "Buyer"
+place: es.command "Place order"
+cart: es.aggregate "Order"
+placed: es.event "Order placed"
+policy: es.policy "When order placed, take payment"
+charge: es.command "Charge card"
+payments: es.external "Payment provider"
+paid: es.event "Payment taken"
+summary: es.read-model "Order summary"
+hot: es.hotspot "Partial refunds?"
+
+group checkout "Checkout" { buyer place cart placed policy charge paid summary hot } { kind: bounded-context }
+
+buyer -> place { kind: triggers }
+place -> cart { kind: triggers }
+cart -> placed { kind: triggers }
+placed -> policy { kind: triggers }
+policy -> charge { kind: triggers }
+charge -> payments { kind: triggers }
+payments -> paid { kind: triggers }
+paid -> summary { kind: triggers }

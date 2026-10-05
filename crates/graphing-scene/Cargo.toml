@@ -1,0 +1,14 @@
+[package]
+name = "graphing-scene"
+description = "model + stencils -> resolved geometry and style; renderer agnostic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+graphing-model.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+graphing-dsl.workspace = true

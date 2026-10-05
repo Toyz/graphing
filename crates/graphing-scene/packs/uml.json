@@ -1,0 +1,53 @@
+{
+  "id": "uml",
+  "name": "UML",
+  "icon": "Code",
+  "description": "Classes, components, deployment, states and activities",
+  "version": "1",
+  "stencils": [
+    {"name": "class", "title": "Class", "category": "UML class", "outline": "block", "compartments": ["attributes", "operations"], "icon": "Box", "props": [{"key": "stereotype", "label": "Stereotype"}, {"key": "attributes", "label": "Attributes", "kind": "list"}, {"key": "operations", "label": "Operations", "kind": "list"}]},
+    {"name": "abstract", "title": "Abstract class", "category": "UML class", "outline": "block", "stereotype": "abstract", "compartments": ["attributes", "operations"], "icon": "Box", "props": [{"key": "attributes", "label": "Attributes", "kind": "list"}, {"key": "operations", "label": "Operations", "kind": "list"}]},
+    {"name": "interface", "title": "Interface", "category": "UML class", "outline": "block", "stereotype": "interface", "compartments": ["operations"], "icon": "Plug", "props": [{"key": "operations", "label": "Operations", "kind": "list"}]},
+    {"name": "enum", "title": "Enumeration", "category": "UML class", "outline": "block", "stereotype": "enumeration", "compartments": ["literals"], "icon": "ListOrdered", "props": [{"key": "literals", "label": "Literals", "kind": "list"}]},
+    {"name": "datatype", "title": "Data type", "category": "UML class", "outline": "block", "stereotype": "dataType", "compartments": ["attributes"], "icon": "Binary", "props": [{"key": "attributes", "label": "Attributes", "kind": "list"}]},
+    {"name": "object", "title": "Object", "category": "UML class", "outline": "block", "header": "role", "compartments": ["slots"], "icon": "Square", "props": [{"key": "slots", "label": "Slots", "kind": "list"}]},
+    {"name": "component", "title": "Component", "category": "UML component", "outline": {"path": "M0 0 H200 V100 H0 Z", "view": [0, 0, 200, 100]}, "stereotype": "component", "detail": {"path": "M170 8 H188 V30 H170 Z M164 12 H176 V17 H164 Z M164 21 H176 V26 H164 Z", "view": [0, 0, 200, 100]}, "compartments": ["provided", "required"], "icon": "Component", "props": [{"key": "provided", "label": "Provided interfaces", "kind": "list"}, {"key": "required", "label": "Required interfaces", "kind": "list"}]},
+    {"name": "node", "title": "Node", "category": "UML component", "outline": {"path": "M0 14 L14 0 H100 V86 L86 100 H0 Z", "view": [0, 0, 100, 100]}, "detail": {"path": "M0 14 H86 V100 M86 14 L100 0", "view": [0, 0, 100, 100]}, "label_area": [0, 0.14, 0.86, 0.86], "size": [180, 110], "icon": "Server"},
+    {"name": "device", "title": "Device", "category": "UML component", "outline": {"path": "M0 14 L14 0 H100 V86 L86 100 H0 Z", "view": [0, 0, 100, 100]}, "detail": {"path": "M0 14 H86 V100 M86 14 L100 0", "view": [0, 0, 100, 100]}, "label_area": [0, 0.14, 0.86, 0.86], "size": [180, 110], "glyph": {"icon": "Monitor", "at": "top-left"}, "icon": "Monitor"},
+    {"name": "artifact", "title": "Artifact", "category": "UML component", "outline": "rect", "glyph": {"icon": "File", "at": "top-right"}, "icon": "File"},
+    {"name": "port", "title": "Port", "category": "UML component", "outline": "rect", "header": "label", "label": "below", "size": [18, 18], "icon": "Square"},
+    {"name": "choice", "title": "Choice", "category": "UML state", "outline": "diamond", "header": "none", "size": [30, 30], "icon": "Diamond"},
+    {"name": "junction", "title": "Junction", "category": "UML state", "outline": "ellipse", "header": "none", "size": [16, 16], "mark": {"path": "M0 50 A50 50 0 1 0 100 50 A50 50 0 1 0 0 50 Z", "view": [0, 0, 100, 100]}, "icon": "CircleDot"},
+    {"name": "history", "title": "History", "category": "UML state", "outline": "ellipse", "header": "none", "size": [32, 32], "detail": {"path": "M36 30 V70 M64 30 V70 M36 50 H64", "view": [0, 0, 100, 100]}, "icon": "RotateCcw"},
+    {"name": "deep-history", "title": "Deep history", "category": "UML state", "outline": "ellipse", "header": "none", "size": [32, 32], "detail": {"path": "M28 30 V70 M52 30 V70 M28 50 H52 M70 28 V48 M61 33 L79 43 M79 33 L61 43", "view": [0, 0, 100, 100]}, "icon": "RotateCcw"},
+    {"name": "entry", "title": "Entry point", "category": "UML state", "outline": "ellipse", "label": "below", "size": [20, 20], "icon": "Circle"},
+    {"name": "exit", "title": "Exit point", "category": "UML state", "outline": "ellipse", "label": "below", "size": [20, 20], "detail": {"path": "M18 18 L82 82 M82 18 L18 82", "view": [0, 0, 100, 100]}, "icon": "CircleX"},
+    {"name": "terminate", "title": "Terminate", "category": "UML state", "outline": "ellipse", "header": "none", "size": [28, 28], "detail": {"path": "M15 15 L85 85 M85 15 L15 85", "view": [0, 0, 100, 100]}, "icon": "X"},
+    {"name": "send", "title": "Send signal", "category": "UML activity", "outline": {"path": "M0 0 H82 L100 50 L82 100 H0 Z", "view": [0, 0, 100, 100]}, "label_area": [0, 0, 0.85, 1], "size": [160, 56], "icon": "Send"},
+    {"name": "accept", "title": "Accept event", "category": "UML activity", "outline": {"path": "M0 0 H100 V100 H0 L18 50 Z", "view": [0, 0, 100, 100]}, "label_area": [0.12, 0, 0.88, 1], "size": [160, 56], "icon": "Inbox"},
+    {"name": "time-event", "title": "Time event", "category": "UML activity", "outline": {"path": "M0 0 H100 L0 100 H100 Z", "view": [0, 0, 100, 100]}, "label": "below", "size": [28, 36], "icon": "Hourglass"},
+    {"name": "object-node", "title": "Object node", "category": "UML activity", "outline": "rect", "size": [140, 50], "icon": "Square"},
+    {"name": "flow-final", "title": "Flow final", "category": "UML activity", "outline": "ellipse", "header": "none", "size": [28, 28], "detail": {"path": "M15 15 L85 85 M85 15 L15 85", "view": [0, 0, 100, 100]}, "icon": "CircleX"},
+    {"name": "activation", "title": "Activation", "category": "UML sequence", "outline": "rect", "header": "none", "size": [14, 90], "icon": "RectangleVertical"}
+  ],
+  "edge_kinds": [
+    {"name": "inheritance", "group": "UML", "description": "Is a kind of (hollow triangle)", "head": "triangle"},
+    {"name": "implements", "group": "UML", "description": "Implements an interface (dashed, hollow triangle)", "head": "triangle", "dashed": true},
+    {"name": "directed", "group": "UML", "description": "Directed association (open arrow)", "head": "open"},
+    {"name": "usage", "group": "UML", "description": "Uses (dashed, «use»)", "head": "open", "dashed": true, "stereotype": "use"},
+    {"name": "message", "group": "UML", "description": "Synchronous message", "head": "arrow"},
+    {"name": "create", "group": "UML", "description": "Creates (dashed, «create»)", "head": "open", "dashed": true, "stereotype": "create"}
+  ],
+  "group_kinds": [
+    {"name": "fragment", "title": "Combined fragment", "category": "UML", "look": "package", "icon": "SquareStack", "description": "alt, opt, loop, par: name it after the operator"},
+    {"name": "partition", "title": "Activity partition", "category": "UML", "look": "lane", "icon": "PanelTop", "description": "Who performs the actions inside"},
+    {"name": "uml-package", "title": "Package", "category": "UML", "look": "package", "icon": "Package", "description": "A namespace for model elements"},
+    {"name": "uml-subsystem", "title": "Subsystem", "category": "UML", "look": "sysml", "stereotype": "subsystem", "icon": "Boxes", "description": "A large component made of smaller ones"}
+  ],
+  "diagram_kinds": [
+    {"id": "class", "name": "Class", "context": "package", "description": "Classes, their members and relationships", "icon": "Box"},
+    {"id": "object", "name": "Object", "context": "package", "description": "A snapshot of instances and links", "icon": "Square"},
+    {"id": "component", "name": "Component", "context": "component", "description": "Components and the interfaces between them", "icon": "Component"},
+    {"id": "deployment", "name": "Deployment", "context": "system", "description": "Nodes, devices and the artifacts deployed on them", "icon": "Server"}
+  ]
+}

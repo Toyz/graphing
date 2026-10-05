@@ -1,0 +1,13 @@
+[package]
+name = "graphing-script"
+description = "Rune plugins: manifests, sandboxed script threads, host modules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+graphing-model.workspace = true
+graphing-scene.workspace = true
+rune.workspace = true
+serde.workspace = true
+serde_json.workspace = true

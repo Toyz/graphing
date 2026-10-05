@@ -1,0 +1,43 @@
+# A guided walkthrough of one request. Play it in the app (View > Play
+# Animation), or export: graphing render request.gph -o request.gif
+diagram "How a request is served"
+use c4
+
+client: c4.person "Client" { description: "Opens the app in a browser" }
+api: c4.container "API server" { technology: "Rust, Axum", description: "Checks the session, runs the query" }
+cache: c4.container "Cache" { technology: "Redis", description: "Sessions and hot rows" }
+db: c4.database "Database" { technology: "PostgreSQL", description: "The source of truth" }
+
+group backend "Backend" { api cache db } { kind: system-boundary }
+
+client -> api "GET /orders" { kind: uses }
+api -> cache "session?" { kind: uses }
+api -> db "SELECT orders" { kind: uses }
+
+animate {
+  step "Client" 2s {
+    show client
+    focus client
+    highlight client
+  }
+  step "API server" 2.5s {
+    show api
+    flow client -> api
+    focus client, api
+    highlight api
+  }
+  step "Cache" 2s {
+    show cache
+    flow api -> cache
+    highlight cache
+  }
+  step "Database" 2.5s {
+    show db, backend
+    flow api -> db
+    focus backend
+    highlight db
+  }
+  step "The whole picture" 2s {
+    focus all
+  }
+}

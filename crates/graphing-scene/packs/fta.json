@@ -1,0 +1,28 @@
+{
+  "id": "fta",
+  "name": "Fault tree",
+  "icon": "TriangleAlert",
+  "description": "Fault trees: events and logic gates",
+  "version": "1",
+  "stencils": [
+    {"name": "event", "title": "Event", "category": "Fault tree events", "outline": "rect", "size": [170, 64], "icon": "Square", "aliases": ["top", "intermediate"], "props": [{"key": "probability", "label": "Probability"}], "notes": true, "fields": [{"key": "probability", "format": "P = {}"}]},
+    {"name": "basic", "title": "Basic event", "category": "Fault tree events", "outline": "ellipse", "label": "below", "size": [56, 56], "icon": "Circle", "props": [{"key": "probability", "label": "Probability"}]},
+    {"name": "undeveloped", "title": "Undeveloped event", "category": "Fault tree events", "outline": "diamond", "label": "below", "size": [70, 48], "icon": "Diamond"},
+    {"name": "house", "title": "House event", "category": "Fault tree events", "outline": {"path": "M50 0 L100 36 V100 H0 V36 Z", "view": [0, 0, 100, 100]}, "label": "below", "size": [56, 56], "icon": "House"},
+    {"name": "conditioning", "title": "Conditioning event", "category": "Fault tree events", "outline": "ellipse", "size": [130, 54], "icon": "Circle"},
+    {"name": "and", "title": "AND gate", "category": "Fault tree gates", "outline": {"path": "M0 100 V50 A50 50 0 0 1 100 50 V100 Z", "view": [0, 0, 100, 100]}, "label": "below", "size": [52, 56], "icon": "Triangle"},
+    {"name": "or", "title": "OR gate", "category": "Fault tree gates", "outline": {"path": "M0 100 Q50 72 100 100 Q100 34 50 0 Q0 34 0 100 Z", "view": [0, 0, 100, 100]}, "label": "below", "size": [52, 56], "icon": "Triangle"},
+    {"name": "xor", "title": "XOR gate", "category": "Fault tree gates", "outline": {"path": "M0 100 Q50 72 100 100 Q100 34 50 0 Q0 34 0 100 Z", "view": [0, 0, 100, 112]}, "label": "below", "size": [52, 62], "icon": "Triangle", "detail": {"path": "M0 112 Q50 84 100 112", "view": [0, 0, 100, 112]}},
+    {"name": "vote", "title": "Voting gate (k/n)", "category": "Fault tree gates", "outline": {"path": "M0 100 Q50 72 100 100 Q100 34 50 0 Q0 34 0 100 Z", "view": [0, 0, 100, 100]}, "label": "inside", "size": [60, 60], "icon": "Triangle", "label_area": [0.15, 0.45, 0.7, 0.4]},
+    {"name": "pand", "title": "Priority AND", "category": "Fault tree gates", "outline": {"path": "M0 100 V50 A50 50 0 0 1 100 50 V100 Z", "view": [0, 0, 100, 100]}, "label": "below", "size": [52, 56], "icon": "Triangle", "detail": {"path": "M18 92 L50 62 L82 92", "view": [0, 0, 100, 100]}},
+    {"name": "inhibit", "title": "Inhibit gate", "category": "Fault tree gates", "outline": "hexagon", "label": "below", "size": [52, 56], "icon": "Triangle"},
+    {"name": "transfer-in", "title": "Transfer in", "category": "Fault tree gates", "outline": {"path": "M50 0 L100 100 H0 Z", "view": [0, 0, 100, 100]}, "label": "below", "size": [48, 42], "icon": "Triangle"},
+    {"name": "transfer-out", "title": "Transfer out", "category": "Fault tree gates", "outline": {"path": "M50 0 L100 100 H0 Z", "view": [0, 0, 100, 100]}, "detail": {"path": "M75 50 H100", "view": [0, 0, 100, 100]}, "label": "below", "size": [48, 42], "icon": "Triangle"}
+  ],
+  "edge_kinds": [
+    {"name": "fault", "group": "Fault tree", "description": "Input to a gate (no arrowheads)", "head": "none", "tail": "none"}
+  ],
+  "diagram_kinds": [
+    {"id": "fta", "name": "Fault tree", "context": "hazard", "description": "How basic failures combine into a top event", "icon": "TriangleAlert", "flow": "down"}
+  ]
+}

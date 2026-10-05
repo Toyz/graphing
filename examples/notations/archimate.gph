@@ -1,0 +1,22 @@
+# ArchiMate layered view: a claims process down to the servers.
+diagram "Claims" { kind: archimate, context: enterprise }
+use archimate
+
+customer: archimate.actor "Customer"
+handle: archimate.process "Handle claim"
+claimsvc: archimate.service "Claim registration"
+app: archimate.component "Claims system"
+appsvc: archimate.app-service "Claim API"
+claim: archimate.data "Claim"
+server: archimate.node "App server"
+dbms: archimate.system-software "PostgreSQL"
+goal: archimate.goal "Pay claims in 5 days"
+
+customer -> handle { kind: assignment }
+handle -> claimsvc { kind: realization }
+appsvc -> handle { kind: serving }
+app -> appsvc { kind: realization }
+app -> claim { kind: access }
+server -> app { kind: serving }
+dbms -> server { kind: composition }
+handle -> goal { kind: influence }

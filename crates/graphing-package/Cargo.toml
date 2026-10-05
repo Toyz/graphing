@@ -1,0 +1,11 @@
+[package]
+name = "graphing-package"
+description = "The .gphz package: diagram text plus assets in one compact file"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+zstd.workspace = true
+blake3.workspace = true
+thiserror.workspace = true

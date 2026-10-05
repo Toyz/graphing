@@ -1,0 +1,8 @@
+[package]
+name = "graphing-model"
+description = "document model: nodes, edges, groups, styles, edit ops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]

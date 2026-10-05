@@ -1,0 +1,18 @@
+# Uses the example pack in examples/packs/cloud:
+#   graphing render examples/cloud.gph -o out.svg --packs examples/packs
+diagram "Upload pipeline"
+
+user: actor "User"
+edge: cloud.cloud "CDN"
+api: cloud.function "upload" { runtime: "rust 1.98" }
+raw: cloud.bucket "raw"
+jobs: cloud.queue "resize jobs"
+worker: cloud.function "resize" { runtime: "rust 1.98" }
+thumbs: cloud.bucket "thumbs"
+
+user -> edge
+edge -> api { kind: invokes }
+api -> raw "put"
+api -> jobs { kind: publishes }
+jobs -> worker
+worker -> thumbs "put"

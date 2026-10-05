@@ -1,0 +1,25 @@
+diagram "Charge" { kind: act, context: activity, view: Charging }
+use sysml
+
+start: sysml.initial
+plug: sysml.action "Plug in"
+auth: sysml.action "Authenticate"
+ok: sysml.decision
+fork: sysml.fork
+charge: sysml.action "Deliver power"
+monitor: sysml.action "Monitor temperature"
+join: sysml.join
+done: sysml.final
+deny: sysml.action "Show error"
+
+start -> plug
+plug -> auth
+auth -> ok
+ok -> fork "[authorized]"
+ok -> deny "[rejected]"
+fork -> charge
+fork -> monitor
+charge -> join
+monitor -> join
+join -> done
+deny -> done

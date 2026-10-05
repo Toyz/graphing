@@ -1,0 +1,33 @@
+# BPMN process: handling an order.
+diagram "Order handling" { kind: bpmn, context: process }
+use bpmn
+
+start: bpmn.start-message "Order received"
+check: bpmn.user "Check order"
+valid: bpmn.exclusive "Valid?"
+pay: bpmn.service "Charge card"
+split: bpmn.parallel
+pack: bpmn.manual "Pack goods"
+invoice: bpmn.send "Send invoice"
+join: bpmn.parallel
+ship: bpmn.subprocess "Ship"
+reject: bpmn.send "Send rejection"
+done: bpmn.end "Order done"
+rejected: bpmn.end "Rejected"
+orders: bpmn.store "Orders"
+
+group shop "Shop" { start check valid pay split pack invoice join ship reject done rejected orders } { kind: pool }
+
+start -> check { kind: sequence }
+check -> valid { kind: sequence }
+valid -> pay "yes" { kind: sequence }
+valid -> reject "no" { kind: sequence }
+pay -> split { kind: sequence }
+split -> pack { kind: sequence }
+split -> invoice { kind: sequence }
+pack -> join { kind: sequence }
+invoice -> join { kind: sequence }
+join -> ship { kind: sequence }
+ship -> done { kind: sequence }
+reject -> rejected { kind: sequence }
+check -> orders { kind: data-association }

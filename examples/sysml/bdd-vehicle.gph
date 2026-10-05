@@ -1,0 +1,19 @@
+diagram "Vehicle" { kind: bdd, context: package, view: Structure }
+use sysml
+
+vehicle: sysml.block "Vehicle" {
+  values: ["mass : kg = 1500", "range : km"]
+  parts: ["engine : Engine", "wheels : Wheel [4]"]
+  operations: ["drive(speed : m/s)"]
+}
+engine: sysml.block "Engine" { values: ["power : kW"] }
+wheel: sysml.block "Wheel" { values: ["diameter : mm"] }
+electric: sysml.block "ElectricEngine" { values: ["capacity : kWh"] }
+combustion: sysml.block "CombustionEngine" { values: ["displacement : L"] }
+speed: sysml.valuetype "Speed" { values: ["unit = m/s"] }
+
+vehicle -> engine "engine" { kind: composition }
+vehicle -> wheel "wheels 4" { kind: composition }
+electric -> engine { kind: generalization }
+combustion -> engine { kind: generalization }
+vehicle -> speed { kind: dependency, stereotype: use }

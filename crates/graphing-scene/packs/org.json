@@ -1,0 +1,28 @@
+{
+  "id": "org",
+  "name": "Org chart and mind map",
+  "icon": "Users",
+  "description": "Org charts and mind maps",
+  "version": "1",
+  "stencils": [
+    {"name": "person", "title": "Person", "category": "Org chart", "outline": "rounded", "size": [220, 72], "glyph": {"icon": "CircleUserRound", "at": "left", "size": 0.55}, "label_area": [0.26, 0, 0.74, 1], "notes": true, "fields": [{"key": "title", "format": "{}"}, {"key": "team", "format": "{}"}], "icon": "CircleUserRound", "props": [{"key": "title", "label": "Job title"}, {"key": "team", "label": "Team"}, {"key": "email", "label": "Email"}]},
+    {"name": "team", "title": "Team", "category": "Org chart", "outline": "rounded", "size": [220, 72], "glyph": {"icon": "Users", "at": "left", "size": 0.5}, "label_area": [0.26, 0, 0.74, 1], "notes": true, "fields": [{"key": "lead", "format": "Lead: {}"}], "icon": "Users", "props": [{"key": "lead", "label": "Lead"}, {"key": "size", "label": "Headcount"}]},
+    {"name": "vacancy", "title": "Open role", "category": "Org chart", "outline": "rounded", "size": [220, 72], "glyph": {"icon": "UserPlus", "at": "left", "size": 0.5}, "label_area": [0.26, 0, 0.74, 1], "defaults": {"stroke": "#adb5bd"}, "icon": "UserPlus"},
+    {"name": "central", "title": "Central topic", "category": "Mind map", "outline": "ellipse", "size": [200, 90], "weight": 2.5, "defaults": {"fill": "#7950f2", "stroke": "#5f3dc4", "color": "#ffffff"}, "icon": "Brain"},
+    {"name": "topic", "title": "Topic", "category": "Mind map", "outline": "rounded", "size": [150, 48], "weight": 2, "icon": "RectangleHorizontal"},
+    {"name": "subtopic", "title": "Subtopic", "category": "Mind map", "outline": "rounded", "size": [130, 36], "icon": "Minus"},
+    {"name": "idea", "title": "Idea", "category": "Mind map", "outline": "rounded", "size": [130, 40], "glyph": {"icon": "Lightbulb", "at": "top-left"}, "defaults": {"fill": "#fff3bf", "stroke": "#fcc419", "color": "#1f1f1f"}, "label_area": [0.12, 0, 0.88, 1], "icon": "Lightbulb"}
+  ],
+  "edge_kinds": [
+    {"name": "reports-to", "group": "Org chart", "description": "Reports to (no arrowhead)", "head": "none", "tail": "none"},
+    {"name": "dotted-line", "group": "Org chart", "description": "Dotted-line report", "head": "none", "tail": "none", "dashed": true},
+    {"name": "branch", "group": "Mind map", "description": "Topic to subtopic", "head": "none", "tail": "none"}
+  ],
+  "group_kinds": [
+    {"name": "department", "title": "Department", "category": "Org chart", "look": "card", "icon": "Building2", "description": "A department and its people", "props": [{"key": "head", "label": "Head"}]}
+  ],
+  "diagram_kinds": [
+    {"id": "org", "name": "Org chart", "context": "organisation", "description": "Who reports to whom", "icon": "Network", "flow": "down"},
+    {"id": "mindmap", "name": "Mind map", "context": "topic", "description": "Ideas branching from one topic", "icon": "Brain", "flow": "radial"}
+  ]
+}

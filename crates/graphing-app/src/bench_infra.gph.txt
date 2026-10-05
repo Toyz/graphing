@@ -1,0 +1,22 @@
+diagram "Platform"
+lb: rounded "Load balancer"
+api: rounded "API"
+db: cylinder "Postgres"
+fn: rounded "Resizer"
+blk: rounded "Flight computer"
+group pub "Public subnet" { lb } { kind: subnet }
+group priv "Private subnet" { api db } { kind: subnet }
+group vpc "Prod VPC" { pub priv } { kind: vpc }
+group sls "Functions" { fn } { kind: serverless }
+group sys "Avionics" { blk } { kind: block-boundary }
+group pkg "Model" { sys } { kind: package }
+lb -> api
+api -> db
+api -> fn
+layout {
+  lb 80 120
+  api 80 300
+  db 300 300
+  fn 640 300
+  blk 640 120
+}

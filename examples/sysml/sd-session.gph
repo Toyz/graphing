@@ -1,0 +1,19 @@
+diagram "Session" { kind: sd, context: interaction, view: StartCharging }
+use sysml
+
+car: sysml.lifeline "car : Vehicle"
+station: sysml.lifeline "station : Charger"
+backend: sysml.lifeline "backend : Billing"
+
+car -> station "plugIn()"
+station -> backend "authorize(id)"
+backend -> station "ok" { kind: reply }
+station -> car "startCharging()" { kind: async }
+station -> station "selfTest()"
+car -> station "unplug()"
+
+layout {
+  car 0 0
+  station 260 0
+  backend 520 0
+}

@@ -1,0 +1,20 @@
+# Data flow diagram with trust boundaries, for threat modelling.
+diagram "Login" { kind: threat, context: system }
+use dfd
+
+user: dfd.external "User"
+browser: dfd.process "Browser"
+api: dfd.process "Auth API" { threats: ["S: credential stuffing", "D: login flood"] }
+sessions: dfd.store "Sessions" { sensitivity: "secret" }
+users: dfd.store "Users" { sensitivity: "PII" }
+idp: dfd.external "Identity provider"
+
+group internet "Internet" { user browser } { kind: trust-boundary }
+group dc "Data centre" { api sessions users } { kind: trust-boundary }
+
+user -> browser "credentials" { kind: dataflow }
+browser -> api "POST /login" { kind: dataflow }
+api -> users "lookup" { kind: dataflow-both }
+api -> sessions "create session" { kind: dataflow }
+api -> idp "OIDC" { kind: dataflow-both }
+api -> browser "session cookie" { kind: dataflow }

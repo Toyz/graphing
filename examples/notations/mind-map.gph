@@ -1,0 +1,22 @@
+# Mind map.
+diagram "Launch" { kind: mindmap, context: topic }
+use org
+
+launch: org.central "Launch v1"
+docs: org.topic "Docs"
+site: org.topic "Website"
+qa: org.topic "QA"
+guide: org.subtopic "Getting started"
+api: org.subtopic "API reference"
+shots: org.subtopic "Screenshots"
+perf: org.subtopic "Perf pass"
+idea: org.idea "Video tour?"
+
+launch -> docs { kind: branch }
+launch -> site { kind: branch }
+launch -> qa { kind: branch }
+docs -> guide { kind: branch }
+docs -> api { kind: branch }
+site -> shots { kind: branch }
+qa -> perf { kind: branch }
+site -> idea { kind: branch }

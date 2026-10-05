@@ -1,0 +1,35 @@
+[package]
+name = "graphing-app"
+description = "gpui shell: windows, canvas, panels, commands"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+graphing-model.workspace = true
+graphing-dsl.workspace = true
+graphing-scene.workspace = true
+graphing-ui.workspace = true
+graphing-script.workspace = true
+graphing-export.workspace = true
+graphing-import.workspace = true
+graphing-package.workspace = true
+image.workspace = true
+smallvec.workspace = true
+mp4parse.workspace = true
+re_rav1d.workspace = true
+yuv.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+dirs.workspace = true
+gpui-kit.workspace = true
+anyhow.workspace = true
+lsp-types.workspace = true
+tracing.workspace = true
+
+[build-dependencies]
+serde_json.workspace = true
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }

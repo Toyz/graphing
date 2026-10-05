@@ -1,0 +1,13 @@
+diagram "Range" { kind: req, context: package, view: Requirements }
+use sysml
+
+top: sysml.requirement "VehicleRange" { rid: R1, text: "The vehicle shall travel 400 km on one charge." }
+battery: sysml.requirement "BatteryCapacity" { rid: R1.1, text: "Battery capacity shall be at least 75 kWh." }
+efficiency: sysml.requirement "Efficiency" { rid: R1.2, text: "Consumption shall not exceed 18 kWh/100 km." }
+pack: sysml.block "BatteryPack"
+test: sysml.block "RangeTest" { stereotype: testCase }
+
+battery -> top { kind: derive }
+efficiency -> top { kind: derive }
+pack -> battery { kind: satisfy }
+test -> top { kind: verify }

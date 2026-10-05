@@ -1,0 +1,8 @@
+{
+  "id": "sysml-tools",
+  "name": "SysML tools",
+  "version": "0.1.0",
+  "description": "Numbers requirements, lays out a selection in a grid, and adds a callout shape.",
+  "main": "main.rn",
+  "permissions": ["doc.read", "doc.write", "commands", "stencils", "notify"]
+}

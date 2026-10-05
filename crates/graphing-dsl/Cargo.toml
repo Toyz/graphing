@@ -1,0 +1,10 @@
+[package]
+name = "graphing-dsl"
+description = "lossless .gph text format: parse, print, patch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+graphing-model.workspace = true
+thiserror.workspace = true

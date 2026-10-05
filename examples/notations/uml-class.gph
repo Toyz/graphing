@@ -1,0 +1,22 @@
+# UML class diagram: an order domain.
+diagram "Orders" { kind: class, context: package }
+use uml
+
+order: uml.class "Order" {
+  attributes: ["- id : OrderId", "- placed : DateTime", "- status : Status"]
+  operations: ["+ total() : Money", "+ cancel()"]
+}
+line: uml.class "LineItem" { attributes: ["- qty : u32", "- price : Money"] }
+product: uml.class "Product" { attributes: ["- sku : String", "- name : String"] }
+customer: uml.class "Customer" { attributes: ["- email : Email"], operations: ["+ orders() : [Order]"] }
+status: uml.enum "Status" { literals: ["Draft", "Placed", "Shipped", "Cancelled"] }
+payable: uml.interface "Payable" { operations: ["+ pay(card : Card) : Receipt"] }
+entity: uml.abstract "Entity" { attributes: ["# created : DateTime"] }
+
+order -> line "1..*" { kind: composition }
+line -> product "1" { kind: directed }
+customer -> order "places 0..*" { kind: aggregation }
+order -> status { kind: usage }
+order -> payable { kind: implements }
+order -> entity { kind: inheritance }
+customer -> entity { kind: inheritance }

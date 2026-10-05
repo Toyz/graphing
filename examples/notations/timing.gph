@@ -1,0 +1,11 @@
+# Timing diagram: one SPI byte, mode 0. Waves use WaveDrom's letters:
+# 0 1 levels, p clock, x unknown, z high impedance, = data, . continue.
+diagram "SPI read" { kind: timing, context: interface }
+use timing
+
+sclk: timing.clock "SCLK" { wave: "0.p.......0." }
+cs: timing.signal "CS#" { wave: "1.0.......1." }
+mosi: timing.bus "MOSI" { wave: "x.=.=.=.=.x.", data: ["0x03", "addr", "addr", "addr"] }
+miso: timing.bus "MISO" { wave: "z.......=.z.", data: ["data"] }
+
+group spi "SPI" { sclk cs mosi miso } { kind: signal-group }

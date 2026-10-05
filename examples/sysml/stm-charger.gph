@@ -1,0 +1,13 @@
+diagram "Charger" { kind: stm, context: block, view: ChargerStates }
+use sysml
+
+init: sysml.initial
+idle: sysml.state "Idle" { entry: "led green" }
+charging: sysml.state "Charging" { entry: "close contactor", do: "regulate current", exit: "open contactor" }
+fault: sysml.state "Fault" { entry: "led red" }
+
+init -> idle
+idle -> charging "plugIn [authorized] / startSession" { kind: transition }
+charging -> idle "full / stopSession" { kind: transition }
+charging -> fault "overTemp" { kind: transition }
+fault -> idle "reset" { kind: transition }

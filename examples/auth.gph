@@ -1,0 +1,39 @@
+# Auth flow: edit this file in any editor and the canvas reloads live.
+diagram "Auth flow"
+use core, flow
+
+style service { fill: #e7f5ff, stroke: #1c7ed6 }
+style store { fill: #fff4e6, stroke: #f08c00 }
+
+user: actor "User"
+web: rounded "Web App"
+api: process "API Gateway" .service
+auth: process "Auth Service" .service
+ok: decision "Token valid?"
+db: db "Postgres" .store
+cache: db "Redis" .store
+deny: terminal "401" { fill: #fff5f5, stroke: red }
+note1: note "Tokens expire\nafter 15 min"
+
+group backend "Backend" { api auth ok db cache }
+
+user -> web "sign in"
+web -> api "POST /login"
+api -> auth
+auth -> ok
+ok -> db "yes"
+ok -> deny "no" { line: dashed }
+auth <-> cache "session" { line: dashed }
+note1 -> user
+
+layout {
+  user 40 202.5
+  web 320 202.5
+  api 580 202.5
+  auth 840 202.5
+  ok 1110 113
+  db 1380 186
+  cache 1110 292
+  deny 1380 40
+  note1 30 300
+}

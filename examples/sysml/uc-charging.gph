@@ -1,0 +1,17 @@
+diagram "Charging" { kind: uc, context: package, view: UseCases }
+use sysml
+
+driver: sysml.actor "Driver"
+operator: sysml.actor "Operator"
+charge: sysml.usecase "Charge vehicle"
+pay: sysml.usecase "Pay"
+auth: sysml.usecase "Authenticate"
+monitor: sysml.usecase "Monitor station"
+
+group station "Charging station" { charge pay auth monitor }
+
+driver -- charge
+driver -- pay
+operator -- monitor
+charge -> auth { kind: include }
+pay -> charge { kind: extend }

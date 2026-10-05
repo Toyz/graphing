@@ -1,0 +1,15 @@
+# Entity relationship (crow's foot): a small shop schema.
+diagram "Shop schema" { kind: erd, context: schema }
+use er
+
+customer: er.table "customer" { columns: ["id uuid PK", "email text", "created timestamptz"] }
+orders: er.table "orders" { columns: ["id uuid PK", "customer_id uuid FK", "status order_status", "placed timestamptz"] }
+item: er.table "order_item" { columns: ["order_id uuid PK FK", "product_id uuid PK FK", "qty int"] }
+product: er.table "product" { columns: ["id uuid PK", "sku text", "price numeric"] }
+status: er.enum "order_status" { values: ["draft", "placed", "shipped"] }
+totals: er.view "order_totals" { columns: ["order_id uuid", "total numeric"] }
+
+customer -> orders "places" { kind: one-to-many }
+orders -> item { kind: one-to-one-or-many }
+product -> item { kind: one-to-many }
+orders -> status { kind: chen-link, line: dashed }

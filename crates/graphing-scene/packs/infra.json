@@ -1,0 +1,25 @@
+{
+  "id": "infra",
+  "name": "Infrastructure",
+  "icon": "Server",
+  "description": "Compute and networking containers",
+  "version": "0.2.0",
+  "stencils": [],
+  "group_kinds": [
+    {"name": "server", "title": "Server", "category": "Compute", "look": "card", "icon": "Server", "description": "A physical or virtual host", "props": [{"key": "os", "label": "OS"}, {"key": "cpu", "label": "CPU"}, {"key": "memory", "label": "Memory"}], "defaults": {"os": "Linux", "cpu": "4 vCPU", "memory": "16 GB"}},
+    {"name": "vm", "title": "Virtual machine", "category": "Compute", "look": "card", "icon": "Monitor", "defaults": {"stroke": "#7950f2", "image": "ubuntu-24.04", "size": "2 vCPU / 8 GB"}, "description": "A VM and what runs on it", "props": [{"key": "image", "label": "Image"}, {"key": "size", "label": "Size"}]},
+    {"name": "cluster", "title": "Cluster", "category": "Compute", "look": "lane", "icon": "Boxes", "defaults": {"stroke": "#7950f2", "nodes": "3", "version": "1.30"}, "description": "Machines that act as one", "props": [{"key": "nodes", "label": "Nodes"}, {"key": "version", "label": "Version"}]},
+    {"name": "k8s-namespace", "title": "Namespace", "category": "Compute", "look": "dashed", "icon": "Container", "defaults": {"stroke": "#4263eb", "env": "prod"}, "description": "Kubernetes namespace", "props": [{"key": "env", "label": "Environment"}]},
+    {"name": "node-pool", "title": "Node pool", "category": "Compute", "look": "dashed", "icon": "Cpu", "description": "Workers that share a shape", "props": [{"key": "machine", "label": "Machine type"}, {"key": "count", "label": "Count"}], "defaults": {"machine": "n2-standard-4", "count": "3"}},
+    {"name": "serverless", "title": "Serverless", "category": "Compute", "look": "zone", "icon": "Zap", "defaults": {"fill": "#fab005", "runtime": "nodejs20", "memory": "512 MB"}, "description": "Functions and managed runtimes", "props": [{"key": "runtime", "label": "Runtime"}, {"key": "memory", "label": "Memory"}]},
+    {"name": "region", "title": "Region", "category": "Networking", "look": "zone", "icon": "Globe", "defaults": {"fill": "#868e96", "code": "us-east-1"}, "description": "A cloud region", "props": [{"key": "code", "label": "Region code"}]},
+    {"name": "vpc", "title": "VPC", "category": "Networking", "look": "zone", "icon": "Cloud", "defaults": {"fill": "#4dabf7", "cidr": "10.0.0.0/16"}, "description": "Private network", "props": [{"key": "cidr", "label": "CIDR"}]},
+    {"name": "subnet", "title": "Subnet", "category": "Networking", "look": "dashed", "icon": "Network", "defaults": {"stroke": "#339af0", "cidr": "10.0.1.0/24", "access": "private"}, "description": "An address range inside a network", "props": [{"key": "cidr", "label": "CIDR"}, {"key": "access", "label": "Access"}]},
+    {"name": "availability-zone", "title": "Availability zone", "category": "Networking", "look": "dashed", "icon": "MapPin", "defaults": {"stroke": "#868e96", "zone": "us-east-1a"}, "description": "Failure domain inside a region", "props": [{"key": "zone", "label": "Zone"}]},
+    {"name": "security-group", "title": "Security group", "category": "Networking", "look": "solid", "icon": "Shield", "defaults": {"stroke": "#fa5252", "rules": "443 in, all out"}, "description": "Firewall rules around hosts", "props": [{"key": "rules", "label": "Rules"}]},
+    {"name": "dmz", "title": "DMZ", "category": "Networking", "look": "zone", "icon": "ShieldAlert", "defaults": {"fill": "#fd7e14", "cidr": "172.16.0.0/24"}, "description": "Exposed perimeter network", "props": [{"key": "cidr", "label": "CIDR"}]},
+    {"name": "vlan", "title": "VLAN", "category": "Networking", "look": "lane", "icon": "Cable", "defaults": {"stroke": "#15aabf", "vlan": "100", "cidr": "192.168.100.0/24"}, "description": "Layer-2 segment", "props": [{"key": "vlan", "label": "VLAN ID"}, {"key": "cidr", "label": "CIDR"}]},
+    {"name": "datacenter", "title": "Data center", "category": "Networking", "look": "card", "icon": "Building2", "description": "On-premises site", "props": [{"key": "site", "label": "Site"}], "defaults": {}},
+    {"name": "internet", "title": "Internet", "category": "Networking", "look": "zone", "icon": "Earth", "defaults": {"fill": "#adb5bd"}, "description": "The public network"}
+  ]
+}

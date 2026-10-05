@@ -1,0 +1,34 @@
+{
+  "id": "er",
+  "name": "Entity relationship",
+  "icon": "Table",
+  "description": "Tables with crow's foot cardinality, and Chen notation",
+  "version": "1",
+  "stencils": [
+    {"name": "table", "title": "Table", "category": "ER (crow's foot)", "outline": "block", "compartments": ["columns"], "icon": "Table", "aliases": ["entity"], "props": [{"key": "columns", "label": "Columns (name type PK/FK)", "kind": "list"}, {"key": "stereotype", "label": "Stereotype"}]},
+    {"name": "view", "title": "View", "category": "ER (crow's foot)", "outline": "block", "stereotype": "view", "compartments": ["columns"], "icon": "Eye", "props": [{"key": "columns", "label": "Columns", "kind": "list"}]},
+    {"name": "enum", "title": "Enum type", "category": "ER (crow's foot)", "outline": "block", "stereotype": "enum", "compartments": ["values"], "icon": "ListOrdered", "props": [{"key": "values", "label": "Values", "kind": "list"}]},
+    {"name": "weak", "title": "Weak entity", "category": "ER (crow's foot)", "outline": "block", "compartments": ["columns"], "detail": {"path": "M4 4 H96 V96 H4 Z", "view": [0, 0, 100, 100]}, "icon": "Table", "props": [{"key": "columns", "label": "Columns", "kind": "list"}]},
+    {"name": "entity-chen", "title": "Entity", "category": "ER (Chen)", "outline": "rect", "size": [140, 56], "icon": "Square"},
+    {"name": "weak-chen", "title": "Weak entity", "category": "ER (Chen)", "outline": "rect", "size": [140, 56], "detail": {"path": "M4 7 H96 V93 H4 Z", "view": [0, 0, 100, 100]}, "icon": "Square"},
+    {"name": "relationship", "title": "Relationship", "category": "ER (Chen)", "outline": "diamond", "size": [140, 70], "icon": "Diamond"},
+    {"name": "identifying", "title": "Identifying relationship", "category": "ER (Chen)", "outline": "diamond", "size": [140, 70], "detail": {"path": "M50 9 L91 50 L50 91 L9 50 Z", "view": [0, 0, 100, 100]}, "icon": "Diamond"},
+    {"name": "attribute", "title": "Attribute", "category": "ER (Chen)", "outline": "ellipse", "size": [120, 50], "icon": "Circle"},
+    {"name": "key", "title": "Key attribute", "category": "ER (Chen)", "outline": "ellipse", "size": [120, 50], "detail": {"path": "M28 68 H72", "view": [0, 0, 100, 100]}, "icon": "KeyRound"},
+    {"name": "multivalued", "title": "Multivalued attribute", "category": "ER (Chen)", "outline": "ellipse", "size": [120, 50], "detail": {"path": "M6 50 A44 44 0 1 0 94 50 A44 44 0 1 0 6 50", "view": [0, 0, 100, 100]}, "icon": "Circle"}
+  ],
+  "edge_kinds": [
+    {"name": "one-to-one", "group": "ER", "description": "Exactly one on each side", "head": "one-only", "tail": "one-only"},
+    {"name": "one-to-many", "group": "ER", "description": "One to zero or many", "head": "zero-many", "tail": "one-only"},
+    {"name": "one-to-one-or-many", "group": "ER", "description": "One to at least one", "head": "one-many", "tail": "one-only"},
+    {"name": "one-to-zero-or-one", "group": "ER", "description": "One to an optional one", "head": "zero-one", "tail": "one-only"},
+    {"name": "many-to-many", "group": "ER", "description": "Many on each side (needs a join table)", "head": "zero-many", "tail": "zero-many"},
+    {"name": "chen-link", "group": "ER", "description": "Chen line between entity, relationship and attribute", "head": "none", "tail": "none"}
+  ],
+  "group_kinds": [
+    {"name": "schema", "title": "Schema", "category": "ER", "look": "dashed", "icon": "Database", "description": "Tables of one schema or database"}
+  ],
+  "diagram_kinds": [
+    {"id": "erd", "name": "Entity relationship", "context": "schema", "description": "Tables, columns and how rows relate", "icon": "Table"}
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "id": "es",
+  "name": "Event storming",
+  "icon": "StickyNote",
+  "description": "Event storming sticky notes",
+  "version": "1",
+  "stencils": [
+    {"name": "event", "title": "Domain event", "category": "Event storming", "outline": "rect", "size": [130, 110], "defaults": {"fill": "#ffa94d", "stroke": "#ffa94d", "color": "#1f1f1f"}, "icon": "Zap"},
+    {"name": "command", "title": "Command", "category": "Event storming", "outline": "rect", "size": [130, 110], "defaults": {"fill": "#74c0fc", "stroke": "#74c0fc", "color": "#1f1f1f"}, "icon": "SquareTerminal"},
+    {"name": "aggregate", "title": "Aggregate", "category": "Event storming", "outline": "rect", "size": [150, 130], "defaults": {"fill": "#ffe066", "stroke": "#ffe066", "color": "#1f1f1f"}, "icon": "Boxes"},
+    {"name": "policy", "title": "Policy", "category": "Event storming", "outline": "rect", "size": [130, 110], "defaults": {"fill": "#d0bfff", "stroke": "#d0bfff", "color": "#1f1f1f"}, "icon": "Scale"},
+    {"name": "read-model", "title": "Read model", "category": "Event storming", "outline": "rect", "size": [130, 110], "defaults": {"fill": "#8ce99a", "stroke": "#8ce99a", "color": "#1f1f1f"}, "icon": "Eye"},
+    {"name": "external", "title": "External system", "category": "Event storming", "outline": "rect", "size": [150, 110], "defaults": {"fill": "#f783ac", "stroke": "#f783ac", "color": "#1f1f1f"}, "icon": "Globe"},
+    {"name": "actor", "title": "Actor", "category": "Event storming", "outline": "rect", "size": [90, 70], "defaults": {"fill": "#fff3bf", "stroke": "#fff3bf", "color": "#1f1f1f"}, "icon": "UserRound"},
+    {"name": "ui", "title": "UI / view", "category": "Event storming", "outline": "rect", "size": [130, 110], "defaults": {"fill": "#e9ecef", "stroke": "#e9ecef", "color": "#1f1f1f"}, "icon": "AppWindow"},
+    {"name": "hotspot", "title": "Hotspot", "category": "Event storming", "outline": "diamond", "size": [120, 120], "defaults": {"fill": "#ff6b6b", "stroke": "#ff6b6b", "color": "#1f1f1f"}, "icon": "TriangleAlert"}
+  ],
+  "edge_kinds": [
+    {"name": "triggers", "group": "Event storming", "description": "Leads to the next sticky", "head": "arrow"}
+  ],
+  "group_kinds": [
+    {"name": "bounded-context", "title": "Bounded context", "category": "Event storming", "look": "zone", "icon": "Boxes", "defaults": {"fill": "#868e96"}, "description": "Where one model and language hold"},
+    {"name": "timeline", "title": "Timeline lane", "category": "Event storming", "look": "lane", "icon": "PanelTop", "description": "One flow, left to right"}
+  ],
+  "diagram_kinds": [
+    {"id": "eventstorm", "name": "Event storming", "context": "domain", "description": "Domain events in time order, with what causes them", "icon": "StickyNote"}
+  ]
+}
