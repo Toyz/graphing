@@ -277,7 +277,7 @@ pub fn edge_spec(d: &Diagram, e: &Edge) -> EdgeSpec {
     let mut dashed = matches!(ident("line").as_deref(), Some("dashed" | "dotted"));
     let mut stereotype = ident("stereotype");
     if let Some(kind) = ident("kind")
-        && let Some(def) = registry().edge_kind(&kind)
+        && let Some(def) = registry().edge_kind_in(&kind, &d.packs)
     {
         if let Some(h) = def.head.as_deref().and_then(End::parse) {
             head = h;
@@ -299,12 +299,17 @@ pub fn edge_spec(d: &Diagram, e: &Edge) -> EdgeSpec {
     EdgeSpec { head, tail, dashed, stereotype }
 }
 
+/// A kind's own name without the pack in front (`c4.uses` -> `uses`).
+pub fn short_kind(kind: &str) -> &str {
+    kind.rsplit('.').next().unwrap_or(kind)
+}
+
 /// `ibd [block] HIL Test Bench [Architecture]` when the diagram has a kind.
 pub fn frame_title(d: &Diagram) -> Option<String> {
     let kind = d.prop("kind").map(Value::text).filter(|s| !s.is_empty())?;
     // SysML frames use the short kind (`ibd`); other notations their name.
-    let named = registry().diagram_kind(&kind).filter(|k| k.pack != "sysml").map(|k| k.name.clone());
-    let mut t = named.unwrap_or(kind);
+    let named = registry().diagram_kind_in(&kind, &d.packs).filter(|k| k.pack != "sysml").map(|k| k.name.clone());
+    let mut t = named.unwrap_or_else(|| short_kind(&kind).to_string());
     if let Some(c) = d.prop("context").map(Value::text).filter(|s| !s.is_empty()) {
         t.push_str(&format!(" [{c}]"));
     }
@@ -335,7 +340,7 @@ pub enum Flow {
 
 /// `flow:` on the diagram, else its kind's default, else left to right.
 pub fn flow(d: &Diagram) -> Flow {
-    let name = d.prop("flow").map(Value::text).or_else(|| d.prop("kind").map(Value::text).and_then(|k| registry().diagram_kind(&k).and_then(|k| k.flow.clone())));
+    let name = d.prop("flow").map(Value::text).or_else(|| d.prop("kind").map(Value::text).and_then(|k| registry().diagram_kind_in(&k, &d.packs).and_then(|k| k.flow.clone())));
     match name.as_deref() {
         Some("down" | "vertical" | "tb") => Flow::Down,
         Some("radial" | "around") => Flow::Radial,

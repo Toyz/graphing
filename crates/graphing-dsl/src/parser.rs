@@ -197,10 +197,20 @@ impl Parser {
                 }
                 "use" => {
                     self.pos += 1;
-                    let mut packs = vec![self.path()?];
-                    while self.peek() == Some(&Tok::Comma) {
+                    let mut packs = Vec::new();
+                    loop {
+                        let pack = self.path()?;
+                        let alias = if matches!(self.peek(), Some(Tok::Ident(w)) if w == "as") {
+                            self.pos += 1;
+                            Some(self.ident()?)
+                        } else {
+                            None
+                        };
+                        packs.push((pack, alias));
+                        if self.peek() != Some(&Tok::Comma) {
+                            break;
+                        }
                         self.pos += 1;
-                        packs.push(self.path()?);
                     }
                     return Some(StmtKind::Use { packs });
                 }

@@ -25,6 +25,8 @@ fn ins(at: usize, text: impl Into<String>) -> Splice {
 
 impl Document {
     pub(crate) fn patch(&mut self, op: &Op) {
+        let local = self.localize(op);
+        let op = local.as_ref().unwrap_or(op);
         match op {
             Op::Batch(ops) => ops.iter().for_each(|o| self.patch(o)),
             Op::RemoveNode { id } => self.remove_node(id),
@@ -62,6 +64,54 @@ impl Document {
                 self.commit(splices);
             }
         }
+    }
+
+    /// A pack-qualified name (`c4.person`) as this file writes it: through
+    /// its short name for the pack (`use c4 as arch` -> `arch.person`).
+    fn local_name(&self, name: &str) -> Option<String> {
+        self.diagram.aliases.iter().find_map(|(alias, pack)| name.strip_prefix(pack.as_str())?.strip_prefix('.').map(|rest| format!("{alias}.{rest}")))
+    }
+
+    fn local_props(&self, props: &mut graphing_model::Props) {
+        for (k, v) in props {
+            if k == "kind"
+                && let Value::Ident(name) = v
+                && let Some(local) = self.local_name(name)
+            {
+                *name = local;
+            }
+        }
+    }
+
+    /// `op` with the names it writes spelled the way this file spells them,
+    /// or `None` when that changes nothing.
+    fn localize(&self, op: &Op) -> Option<Op> {
+        if self.diagram.aliases.is_empty() {
+            return None;
+        }
+        let mut op = op.clone();
+        match &mut op {
+            Op::AddNode { node, .. } => {
+                if let Some(s) = node.stencil.as_deref().and_then(|s| self.local_name(s)) {
+                    node.stencil = Some(s);
+                }
+                self.local_props(&mut node.props);
+            }
+            Op::AddEdge { edge, .. } => self.local_props(&mut edge.props),
+            Op::AddGroup { group, .. } => self.local_props(&mut group.props),
+            Op::SetStencil { stencil: Some(s), .. } => {
+                if let Some(local) = self.local_name(s) {
+                    *s = local;
+                }
+            }
+            Op::SetProp { key, value: Some(v), .. } | Op::SetDiagramProp { key, value: Some(v) } => {
+                let mut props = vec![(key.clone(), v.clone())];
+                self.local_props(&mut props);
+                *v = props.remove(0).1;
+            }
+            _ => return None,
+        }
+        Some(op)
     }
 
     /// Give edge `id` a statement of its own if it is one hop of a chain.

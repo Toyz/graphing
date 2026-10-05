@@ -311,12 +311,12 @@ pub(crate) fn candidates(want: &Want, d: &Diagram) -> Vec<Candidate> {
             (Owner::Edge, "kind") => reg
                 .edge_kinds
                 .iter()
-                .map(|k| Candidate::new(&k.name, K::ENUM_MEMBER).detail(&k.group).doc(&k.description))
+                .map(|k| Candidate::new(reg.kind_ref(&k.pack, &k.name), K::ENUM_MEMBER).detail(&k.group).doc(&k.description))
                 .collect(),
             (Owner::Diagram, "kind") => reg
                 .diagram_kinds
                 .iter()
-                .map(|k| Candidate::new(&k.id, K::ENUM_MEMBER).detail(&k.name).doc(&k.description))
+                .map(|k| Candidate::new(reg.kind_ref(&k.pack, &k.id), K::ENUM_MEMBER).detail(&k.name).doc(&k.description))
                 .collect(),
             (Owner::Diagram, "context") => {
                 let mut seen: Vec<&str> = reg.diagram_kinds.iter().map(|k| k.context.as_str()).filter(|c| !c.is_empty()).collect();
@@ -325,7 +325,7 @@ pub(crate) fn candidates(want: &Want, d: &Diagram) -> Vec<Candidate> {
                 seen.into_iter().map(|c| Candidate::new(c, K::ENUM_MEMBER)).collect()
             }
             (Owner::Diagram, "look") => ["technical", "plain"].iter().map(|v| Candidate::new(*v, K::ENUM_MEMBER)).collect(),
-            (Owner::Group, "kind") => reg.group_kinds.iter().map(|k| Candidate::new(&k.name, K::ENUM_MEMBER).detail(&k.category).doc(&k.title)).collect(),
+            (Owner::Group, "kind") => reg.group_kinds.iter().map(|k| Candidate::new(reg.kind_ref(&k.pack, &k.name), K::ENUM_MEMBER).detail(&k.category).doc(&k.title)).collect(),
             (Owner::Group, "look") => graphing_scene::GroupLook::ALL.iter().map(|l| Candidate::new(l.name(), K::ENUM_MEMBER).detail(l.title()).doc(l.description())).collect(),
             (_, "line") => ["solid", "dashed", "dotted"].iter().map(|v| Candidate::new(*v, K::ENUM_MEMBER)).collect(),
             (Owner::Diagram, "routing") | (Owner::Edge, "route") => ["straight", "orthogonal"].iter().map(|v| Candidate::new(*v, K::ENUM_MEMBER)).collect(),

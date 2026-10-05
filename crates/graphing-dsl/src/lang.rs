@@ -226,6 +226,9 @@ fn ident_role(
                     }
                 }
                 St::AfterKw => match kw.as_deref() {
+                    // `use c4 as arch`: `as` reads as a keyword, `arch` as a name.
+                    Some("use") if w == "as" => Role::Keyword,
+                    Some("use") if matches!(prev, Some(Tok::Ident(p)) if p == "as") => Role::Def,
                     Some("use") => Role::Pack,
                     Some("style") => {
                         *st = St::Done;

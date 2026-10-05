@@ -224,6 +224,9 @@ pub struct Diagram {
     /// `diagram "t" { kind: ibd, look: technical }`.
     pub props: Props,
     pub packs: Vec<String>,
+    /// `use c4 as arch`: short name -> pack id. Names are stored with the
+    /// pack id (`c4.person`); the text may write the short one.
+    pub aliases: BTreeMap<String, String>,
     pub styles: BTreeMap<String, Props>,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,

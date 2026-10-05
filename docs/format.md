@@ -21,6 +21,9 @@ Write it the way you like; edits from the canvas keep your style:
   never closes costs only its first line, and a bad line inside a closed
   block costs that statement, not the shapes after it.
 
+`use c4 as arch` gives a pack a short name for this file: `arch.person`
+reads as `c4.person`, also in `kind:` values. See `plugins.md`.
+
 Unnamed edges get keys from their order: `a -> b` twice is `a->b`, then
 `a->b#2`. A `layout` entry names the first as `a -> b` and the others by
 key in quotes: `"a->b#2" via 300 40`. Adding or removing one of them keeps

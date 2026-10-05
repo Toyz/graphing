@@ -13,6 +13,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 
 use graphing_model::{Arrow, Diagram, Edge, Node, Value};
+use graphing_scene::notation;
 use graphing_scene::stencils::registry;
 
 /// SysML v2 text for `d`.
@@ -125,7 +126,7 @@ impl<'a> Ctx<'a> {
                 (n.id.as_str(), k)
             })
             .collect();
-        let ibd = d.prop("kind").map(Value::text).as_deref() == Some("ibd");
+        let ibd = d.prop("kind").map(Value::text).as_deref().map(notation::short_kind) == Some("ibd");
         Self { d, kinds, ibd }
     }
 
@@ -255,7 +256,7 @@ impl<'a> Ctx<'a> {
     /// Generalization between two definitions, written as `:>`.
     fn is_specialization(&self, e: &Edge) -> bool {
         let defs = ["block", "interface", "valuetype", "requirement"];
-        self.d.edge_prop(e, "kind").map(Value::text).as_deref() == Some("generalization")
+        self.d.edge_prop(e, "kind").map(Value::text).as_deref().map(notation::short_kind) == Some("generalization")
             && e.label.is_none()
             && defs.contains(&self.kind(&e.from))
             && self.d.node(&e.to).is_some()
@@ -263,7 +264,7 @@ impl<'a> Ctx<'a> {
 
     fn edge(&self, e: &Edge) -> String {
         let d = self.d;
-        let kind = d.edge_prop(e, "kind").map(Value::text).unwrap_or_default();
+        let kind = d.edge_prop(e, "kind").map(|v| notation::short_kind(&v.text()).to_string()).unwrap_or_default();
         let from = endpoint(&e.from, e.from_port.as_deref());
         let to = endpoint(&e.to, e.to_port.as_deref());
         let label = e.label.as_deref();
@@ -271,7 +272,7 @@ impl<'a> Ctx<'a> {
             Some(l) => format!("{kw} {} ", name(l)),
             None => format!("{kw} "),
         };
-        let diagram = d.prop("kind").map(Value::text).unwrap_or_default();
+        let diagram = d.prop("kind").map(|v| notation::short_kind(&v.text()).to_string()).unwrap_or_default();
         let extra = props_note(&e.props, &["kind"]);
         let line = match kind.as_str() {
             "satisfy" if label.is_none() => format!("satisfy {to} by {from};"),

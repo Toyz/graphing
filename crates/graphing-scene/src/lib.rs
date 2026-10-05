@@ -630,7 +630,7 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
     }
     for g in &d.groups {
         let Some(rect) = done.get(&g.id).copied() else { continue };
-        let kind = find_prop(&g.props, "kind").map(Value::text).and_then(|k| stencils::registry().group_kind(&k).cloned());
+        let kind = find_prop(&g.props, "kind").map(Value::text).and_then(|k| stencils::registry().group_kind_in(&k, &d.packs).cloned());
         let prop = |key: &str| find_prop(&g.props, key).or_else(|| kind.as_ref().and_then(|k| find_prop(&k.defaults, key)));
         let look = GroupLook::of(&g.props, scene.technical);
         let stereotype = find_prop(&g.props, "stereotype")
@@ -674,7 +674,7 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
                 vec![Point::new(x0, top), Point::new(x1, top)]
             };
             let mut spec = notation::edge_spec(d, e);
-            match d.edge_prop(e, "kind").map(Value::text).as_deref() {
+            match d.edge_prop(e, "kind").map(Value::text).as_deref().map(notation::short_kind) {
                 Some("reply" | "return") => {
                     spec.head = End::Open;
                     spec.dashed = true;

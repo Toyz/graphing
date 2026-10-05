@@ -275,6 +275,9 @@ impl StencilDef {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct EdgeKindDef {
     pub name: String,
+    /// Id of the pack that defines it (set on load).
+    #[serde(skip)]
+    pub pack: String,
     #[serde(default)]
     pub group: String,
     #[serde(default)]
@@ -491,14 +494,19 @@ impl Registry {
         self.remove_pack(&raw.id);
         self.stencils.extend(defs);
         self.reindex();
-        self.edge_kinds.retain(|k| !raw.edge_kinds.iter().any(|n| n.name == k.name));
-        self.edge_kinds.extend(raw.edge_kinds);
-        self.diagram_kinds.retain(|k| !raw.diagram_kinds.iter().any(|n| n.id == k.id));
+        // Kinds of the same name from different packs live side by side; a
+        // bare name finds the last loaded, `pack.name` a particular one.
+        self.edge_kinds.retain(|k| k.pack != raw.id);
+        self.edge_kinds.extend(raw.edge_kinds.into_iter().map(|mut k| {
+            k.pack = raw.id.clone();
+            k
+        }));
+        self.diagram_kinds.retain(|k| k.pack != raw.id);
         self.diagram_kinds.extend(raw.diagram_kinds.into_iter().map(|mut k| {
             k.pack = raw.id.clone();
             k
         }));
-        self.group_kinds.retain(|k| k.pack != raw.id && !raw.group_kinds.iter().any(|n| n.name == k.name));
+        self.group_kinds.retain(|k| k.pack != raw.id);
         self.group_kinds.extend(raw.group_kinds.into_iter().map(|mut k| {
             if k.category.is_empty() {
                 k.category = raw.name.clone();
@@ -566,16 +574,45 @@ impl Registry {
         out
     }
 
+    /// A line kind by `name` or `pack.name`.
     pub fn edge_kind(&self, name: &str) -> Option<&EdgeKindDef> {
-        self.edge_kinds.iter().find(|k| k.name == name)
+        self.edge_kind_in(name, &[])
     }
 
+    /// A line kind as a diagram using `packs` means it: a bare name prefers
+    /// those packs, in the order the diagram lists them.
+    pub fn edge_kind_in(&self, name: &str, packs: &[String]) -> Option<&EdgeKindDef> {
+        find_kind(&self.edge_kinds, name, packs, |k| (&k.pack, &k.name))
+    }
+
+    /// A group kind by `name` or `pack.name`.
     pub fn group_kind(&self, name: &str) -> Option<&GroupKindDef> {
-        self.group_kinds.iter().find(|k| k.name == name)
+        self.group_kind_in(name, &[])
     }
 
+    /// See [`Registry::edge_kind_in`].
+    pub fn group_kind_in(&self, name: &str, packs: &[String]) -> Option<&GroupKindDef> {
+        find_kind(&self.group_kinds, name, packs, |k| (&k.pack, &k.name))
+    }
+
+    /// A diagram kind by `id` or `pack.id`.
     pub fn diagram_kind(&self, id: &str) -> Option<&DiagramKindDef> {
-        self.diagram_kinds.iter().find(|k| k.id == id)
+        self.diagram_kind_in(id, &[])
+    }
+
+    /// See [`Registry::edge_kind_in`].
+    pub fn diagram_kind_in(&self, id: &str, packs: &[String]) -> Option<&DiagramKindDef> {
+        find_kind(&self.diagram_kinds, id, packs, |k| (&k.pack, &k.id))
+    }
+
+    /// How a file names kind `name` of `pack`: bare unless another pack
+    /// defines the same name.
+    pub fn kind_ref(&self, pack: &str, name: &str) -> String {
+        let edges = self.edge_kinds.iter().map(|k| (&k.pack, &k.name));
+        let groups = self.group_kinds.iter().map(|k| (&k.pack, &k.name));
+        let diagrams = self.diagram_kinds.iter().map(|k| (&k.pack, &k.id));
+        let clash = edges.chain(groups).chain(diagrams).any(|(p, n)| n == name && p != pack);
+        if clash { format!("{pack}.{name}") } else { name.to_string() }
     }
 }
 
@@ -588,6 +625,23 @@ fn json_value(v: &serde_json::Value) -> Option<Value> {
         serde_json::Value::Array(items) => Value::List(items.iter().filter_map(json_value).collect()),
         _ => return None,
     })
+}
+
+/// `pack.name` finds that pack's. A bare name finds the first of `packs`
+/// (the diagram's `use` list) that has it, else the last pack loaded.
+fn find_kind<'a, K>(kinds: &'a [K], name: &str, packs: &[String], key: impl Fn(&K) -> (&String, &String)) -> Option<&'a K> {
+    let of = |pack: &str, short: &str| {
+        kinds.iter().rev().find(|k| {
+            let (p, n) = key(k);
+            p == pack && n == short
+        })
+    };
+    if let Some((pack, short)) = name.rsplit_once('.')
+        && let Some(k) = of(pack, short)
+    {
+        return Some(k);
+    }
+    packs.iter().find_map(|p| of(p, name)).or_else(|| kinds.iter().rev().find(|k| key(k).1 == name))
 }
 
 static REGISTRY: LazyLock<RwLock<Registry>> = LazyLock::new(|| RwLock::new(Registry::builtin()));
@@ -650,16 +704,18 @@ mod tests {
     fn builtin_packs_never_clash() {
         let r = Registry::builtin();
         assert_eq!(r.packs.len(), BUILTIN.len());
-        let unique = |names: Vec<&str>, what: &str| {
+        let unique = |names: Vec<String>, what: &str| {
             let mut seen = std::collections::HashSet::new();
             for n in names {
-                assert!(seen.insert(n), "{what} `{n}` is defined twice");
+                assert!(seen.insert(n.clone()), "{what} `{n}` is defined twice");
             }
         };
-        unique(r.edge_kinds.iter().map(|k| k.name.as_str()).collect(), "edge kind");
-        unique(r.group_kinds.iter().map(|k| k.name.as_str()).collect(), "group kind");
-        unique(r.diagram_kinds.iter().map(|k| k.id.as_str()).collect(), "diagram kind");
-        unique(r.stencils().map(|s| s.id.as_str()).collect(), "stencil");
+        // Kinds are unique within a pack; across packs a diagram's `use`
+        // picks (C4 and SysML both have `async`).
+        unique(r.edge_kinds.iter().map(|k| format!("{}.{}", k.pack, k.name)).collect(), "edge kind");
+        unique(r.group_kinds.iter().map(|k| format!("{}.{}", k.pack, k.name)).collect(), "group kind");
+        unique(r.diagram_kinds.iter().map(|k| format!("{}.{}", k.pack, k.id)).collect(), "diagram kind");
+        unique(r.stencils().map(|s| s.id.clone()).collect(), "stencil");
         // Edge kinds name only ends that exist.
         for k in &r.edge_kinds {
             for end in k.head.iter().chain(k.tail.iter()) {
@@ -705,5 +761,30 @@ mod tests {
         assert_eq!(r.packs.iter().filter(|p| p.id == "aws").count(), 1);
         assert!(r.add_json(r#"{"id": "bad id", "name": "x"}"#, "t").is_err());
         assert!(r.add_json(r#"{"id": "x", "name": "x", "stencils": [{"name": "a", "title": "A", "outline": "blob"}]}"#, "t").is_err());
+    }
+
+    #[test]
+    fn kinds_of_the_same_name_live_side_by_side() {
+        let mut r = Registry::builtin();
+        let pack = r#"{"id": "acme", "name": "Acme", "edge_kinds": [{"name": "uses", "head": "diamond"}], "group_kinds": [{"name": "system-boundary", "title": "Acme boundary"}]}"#;
+        r.add_json(pack, "t").unwrap();
+        // A bare name finds the pack loaded last; `pack.name` a particular one.
+        assert_eq!(r.edge_kind("uses").map(|k| k.pack.as_str()), Some("acme"));
+        assert_eq!(r.edge_kind("c4.uses").map(|k| k.head.as_deref()), Some(Some("arrow")));
+        assert_eq!(r.edge_kind("acme.uses").map(|k| k.head.as_deref()), Some(Some("diamond")));
+        assert_eq!(r.group_kind("c4.system-boundary").map(|k| k.pack.as_str()), Some("c4"));
+        assert_eq!(r.diagram_kind("sysml.ibd").map(|k| k.id.as_str()), Some("ibd"));
+        // Pickers write the qualified name only where it is needed.
+        assert_eq!(r.kind_ref("c4", "uses"), "c4.uses");
+        assert_eq!(r.kind_ref("sysml", "flow"), "flow");
+        // C4 and SysML both have `async`.
+        assert_eq!(r.kind_ref("sysml", "async"), "sysml.async");
+        assert_eq!(r.edge_kind("sysml.async").map(|k| k.pack.as_str()), Some("sysml"));
+        // A diagram that uses SysML means SysML's.
+        assert_eq!(r.edge_kind_in("async", &["sysml".into()]).map(|k| k.pack.as_str()), Some("sysml"));
+        assert_eq!(r.edge_kind_in("async", &["c4".into()]).map(|k| k.pack.as_str()), Some("c4"));
+        // Reloading a pack replaces only its own kinds.
+        r.add_json(pack, "t").unwrap();
+        assert_eq!(r.edge_kinds.iter().filter(|k| k.name == "uses").count(), 2);
     }
 }

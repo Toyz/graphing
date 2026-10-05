@@ -161,6 +161,11 @@ fn document(r: &mut Rng) -> (String, usize) {
     let st = Style::random(r);
     let mut w = Writer { r, st, out: String::new(), keep: 0, inner: 0 };
     w.keep("");
+    // Short pack names: shapes may be written either way.
+    let aliased = w.r.chance(40);
+    if aliased {
+        w.out.push_str("use flow as f, core as c\n");
+    }
     if w.r.chance(60) {
         w.out.push_str(&format!("diagram {}", crate::print::fmt_str(w.r.pick(LABELS))));
         w.props(&["routing", "flow"]);
@@ -177,7 +182,8 @@ fn document(r: &mut Rng) -> (String, usize) {
         w.blank();
         let mut line = id.clone();
         if w.r.chance(50) {
-            line = format!("{id}: {}", w.r.pick(STENCILS));
+            let stencil = if aliased && w.r.chance(50) { *w.r.pick(&["f.process", "c.rect"]) } else { *w.r.pick(STENCILS) };
+            line = format!("{id}: {stencil}");
         }
         if w.r.chance(60) {
             line.push(' ');

@@ -276,3 +276,40 @@ fn hops_of_a_chain_change_on_their_own() {
     assert_eq!(d.source(), "a -> b \"x\" { line: dashed }\nb -> c \"y\" { line: dashed }\n");
 }
 
+
+#[test]
+fn pack_short_names_read_as_the_pack_and_edits_write_them_back() {
+    let src = "use c4 as arch, sysml as s, core\narch.person \"User\"\napi: arch.container { kind: arch.service }\nblk: s.block\napi -> blk { kind: arch.uses }\n";
+    let d = clean(src);
+    let m = d.diagram();
+    assert_eq!(m.packs, ["c4", "sysml", "core"]);
+    assert_eq!(m.aliases.get("arch").map(String::as_str), Some("c4"));
+    // The model holds pack ids, whatever the text calls them.
+    assert_eq!(m.node("api").unwrap().stencil.as_deref(), Some("c4.container"));
+    assert_eq!(m.node("blk").unwrap().stencil.as_deref(), Some("sysml.block"));
+    assert_eq!(m.node("api").and_then(|n| m.node_prop(n, "kind")), Some(&Value::Ident("c4.service".into())));
+    assert_eq!(m.edge("api->blk").and_then(|e| m.edge_prop(e, "kind")), Some(&Value::Ident("c4.uses".into())));
+    // Names an edit writes come out in the file's own short form.
+    let edits = [
+        (Op::SetStencil { id: "blk".into(), stencil: Some("c4.system".into()) }, "blk: arch.system"),
+        (Op::SetStencil { id: "blk".into(), stencil: Some("uml.class".into()) }, "blk: uml.class"),
+        (Op::SetProp { id: "api->blk".into(), key: "kind".into(), value: Some(Value::Ident("sysml.flow".into())) }, "kind: s.flow"),
+        (Op::AddNode { node: Node { stencil: Some("c4.database".into()), ..Node::new("db") }, index: 9 }, "db: arch.database"),
+    ];
+    for (op, written) in edits {
+        check(&mut clean(src), op.clone());
+        let mut d = clean(src);
+        d.apply(&op).unwrap();
+        assert!(d.source().contains(written), "{op:?}\n{}", d.source());
+    }
+}
+
+#[test]
+fn a_short_name_used_twice_is_reported() {
+    let d = Document::parse("use c4 as x, sysml as x\nn: x.block\n");
+    assert_eq!(d.diags().len(), 1, "{:?}", d.diags());
+    // The first stays.
+    assert_eq!(d.diagram().node("n").unwrap().stencil.as_deref(), Some("c4.block"));
+    // Naming the same pack twice the same way is fine.
+    clean("use c4 as x\nuse c4 as x\n");
+}

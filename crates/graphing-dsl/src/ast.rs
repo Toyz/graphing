@@ -24,7 +24,8 @@ pub struct Stmt {
 #[derive(Debug, Clone)]
 pub enum StmtKind {
     Diagram { title: Option<Spanned<String>>, props: Option<PropBlock> },
-    Use { packs: Vec<Spanned<String>> },
+    /// `use c4, sysml as s`: packs, each with an optional short name.
+    Use { packs: Vec<(Spanned<String>, Option<Spanned<String>>)> },
     Style { name: Spanned<String>, props: PropBlock },
     Node(NodeDecl),
     Edge(EdgeDecl),

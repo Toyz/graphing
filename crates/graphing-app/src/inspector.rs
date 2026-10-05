@@ -472,9 +472,10 @@ impl Workspace {
         let e = d.edge(id).expect("edge").clone();
         let kind = d.edge_prop(&e, "kind").map(Value::text).unwrap_or_default();
         let mut options = vec![SelectOption { value: String::new(), label: "plain".into(), description: Some("Line with the arrow above".into()), detail: None, icon: Lucide::Minus.into(), group: None }];
-        for k in registry().edge_kinds.iter() {
+        let reg = registry();
+        for k in reg.edge_kinds.iter() {
             options.push(SelectOption {
-                value: k.name.clone(),
+                value: reg.kind_ref(&k.pack, &k.name),
                 label: k.name.clone().into(),
                 description: (!k.description.is_empty()).then(|| k.description.clone().into()),
                 detail: None,
@@ -482,6 +483,7 @@ impl Workspace {
                 group: Some(if k.group.is_empty() { "Other".into() } else { k.group.clone().into() }),
             });
         }
+        drop(reg);
         let target = id.to_string();
         let kind_picker = self.select_box(
             "edge-kind",
@@ -728,14 +730,16 @@ impl Workspace {
         let kind = d.prop("kind").map(Value::text).unwrap_or_default();
         let kind_label = registry().diagram_kind(&kind).map_or("None".to_string(), |dk| dk.name.clone());
         let mut options = vec![SelectOption { value: String::new(), label: "None".into(), description: Some("No frame".into()), detail: None, icon: Lucide::Square.into(), group: None }];
-        options.extend(registry().diagram_kinds.iter().map(|dk| SelectOption {
-            value: dk.id.clone(),
+        let reg = registry();
+        options.extend(reg.diagram_kinds.iter().map(|dk| SelectOption {
+            value: reg.kind_ref(&dk.pack, &dk.id),
             label: dk.name.clone().into(),
             description: (!dk.description.is_empty()).then(|| dk.description.clone().into()),
             detail: Some(dk.id.clone().into()),
             icon: diagram_icon(&dk.id),
-            group: Some("SysML".into()),
+            group: Some(reg.packs.iter().find(|p| p.id == dk.pack).map_or(dk.pack.clone(), |p| p.name.clone()).into()),
         }));
+        drop(reg);
         let kind_picker = self.select_box(
             "diagram-kind",
             (diagram_icon(&kind), kind_label.into()),
@@ -1150,7 +1154,7 @@ impl Workspace {
         let icon = reg.group_kind(&current).and_then(|k| k.icon.as_deref().map(kit::icon_named)).unwrap_or_else(|| Lucide::Group.into());
         let mut options = vec![SelectOption { value: String::new(), label: "None".into(), description: Some("Plain group".into()), detail: None, icon: Lucide::Square.into(), group: None }];
         options.extend(reg.group_kinds.iter().map(|k| SelectOption {
-            value: k.name.clone(),
+            value: reg.kind_ref(&k.pack, &k.name),
             label: k.title.clone().into(),
             description: (!k.description.is_empty()).then(|| k.description.clone().into()),
             detail: Some(k.name.clone().into()),

@@ -27,13 +27,30 @@ pub fn lower(file: &File, diags: &mut Vec<Diag>) -> (Diagram, Index) {
         diags.push(Diag { span: span.clone(), message: msg, severity: Severity::Warning });
     };
 
+    // Short pack names first, so every name below reads through them.
+    for stmt in &file.stmts {
+        let StmtKind::Use { packs } = &stmt.kind else { continue };
+        for (pack, alias) in packs {
+            d.packs.push(pack.value.clone());
+            let Some(alias) = alias else { continue };
+            match d.aliases.get(&alias.value) {
+                Some(other) if other != &pack.value => warn(&alias.span, format!("`{}` already names `{other}`", alias.value)),
+                _ => {
+                    d.aliases.insert(alias.value.clone(), pack.value.clone());
+                }
+            }
+        }
+    }
+    let aliases = d.aliases.clone();
+    let props_of = |block: Option<&PropBlock>| canonical_props(props_of(block), &aliases);
+
     for (si, stmt) in file.stmts.iter().enumerate() {
         match &stmt.kind {
             StmtKind::Diagram { title, props } => {
                 d.title = title.as_ref().map(|t| t.value.clone());
                 d.props = props_of(props.as_ref());
             }
-            StmtKind::Use { packs } => d.packs.extend(packs.iter().map(|p| p.value.clone())),
+            StmtKind::Use { .. } => {}
             StmtKind::Style { name, props } => {
                 d.styles.insert(name.value.clone(), props_of(Some(props)));
             }
@@ -45,7 +62,7 @@ pub fn lower(file: &File, diags: &mut Vec<Diag>) -> (Diagram, Index) {
                 ix.nodes.insert(n.id.value.clone(), si);
                 d.nodes.push(Node {
                     id: n.id.value.clone(),
-                    stencil: n.stencil.as_ref().map(|s| s.value.clone()),
+                    stencil: n.stencil.as_ref().map(|s| canonical(&s.value, &aliases)),
                     label: n.label.as_ref().map(|s| s.value.clone()),
                     classes: n.classes.iter().map(|c| c.value.clone()).collect(),
                     props: props_of(n.props.as_ref()),
@@ -178,6 +195,29 @@ pub fn lower(file: &File, diags: &mut Vec<Diag>) -> (Diagram, Index) {
         }
     }
     (d, ix)
+}
+
+/// `name` with a short pack name in front (`arch.person`) spelled with the
+/// pack's id (`c4.person`).
+pub fn canonical(name: &str, aliases: &std::collections::BTreeMap<String, String>) -> String {
+    match name.split_once('.') {
+        Some((head, rest)) if aliases.contains_key(head) => format!("{}.{rest}", aliases[head]),
+        _ => name.to_string(),
+    }
+}
+
+/// Names a pack defines appear as `kind` values too (`kind: arch.uses`).
+fn canonical_props(mut props: Props, aliases: &std::collections::BTreeMap<String, String>) -> Props {
+    if !aliases.is_empty() {
+        for (k, v) in &mut props {
+            if k == "kind"
+                && let graphing_model::Value::Ident(name) = v
+            {
+                *name = canonical(name, aliases);
+            }
+        }
+    }
+    props
 }
 
 /// `node.port` -> (`node`, Some(`port`)).

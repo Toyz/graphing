@@ -48,6 +48,18 @@ or `flow: radial` itself.
 ```
 
 Files use a stencil as `<pack>.<name>`: `api: cloud.function "upload"`.
+A file can give a pack a short name, which helps with long or
+look-alike pack ids:
+
+```graphing
+use acme.cloud as ac, sysml as s
+api: ac.function "upload"
+a -> b { kind: s.flow }
+```
+
+The diagram keeps the pack's real id (`acme.cloud.function`), so the short
+name is the file's own business. Canvas edits write names back in the
+file's short form.
 
 Stencil fields (only `name` and `title` are required):
 
@@ -78,6 +90,12 @@ Edge kinds set `head` / `tail` (`none arrow open triangle diamond
 filled-diamond circle`, and the crow's foot ends `one one-only many zero-one
 one-many zero-many`), `dashed` and an optional `stereotype`; files use
 them as `a -> b { kind: publishes }`. A pack loaded again replaces itself.
+
+Kind names are unique within a pack, but two packs may share one (C4 and
+SysML both have `async`). `kind: c4.async` names one exactly; a bare
+`async` means the first pack in the diagram's `use` list that has it, else
+the pack loaded last. The inspector writes the qualified form only when a
+name is shared.
 
 Group kinds are container presets. They show in the library (one section per
 `category`) and in the inspector's Kind picker; files use them as
