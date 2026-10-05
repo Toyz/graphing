@@ -168,7 +168,7 @@ pub fn lower(file: &File, diags: &mut Vec<Diag>) -> (Diagram, Index) {
                 parsed
             });
             let mut moves = Vec::new();
-            for (t, (x, y)) in &st.moves {
+            for MoveDecl { target: t, to: (x, y), .. } in &st.moves {
                 if d.node(&t.value).is_none() && d.group(&t.value).is_none() {
                     warn(&t.span, format!("`{}` is not a shape or group to move", t.value));
                 }
@@ -188,13 +188,8 @@ fn split_port(end: &str) -> (String, Option<String>) {
     }
 }
 
-/// `a->b`, then `a->b#2`, `a->b#3` for parallel unnamed edges.
 fn edge_key(existing: &HashMap<String, (usize, usize)>, from: &str, to: &str) -> String {
-    let base = format!("{from}->{to}");
-    if !existing.contains_key(&base) {
-        return base;
-    }
-    (2..).map(|n| format!("{base}#{n}")).find(|k| !existing.contains_key(k)).expect("unbounded")
+    graphing_model::edge_key(from, to, |k| existing.contains_key(k))
 }
 
 fn props_of(block: Option<&PropBlock>) -> Props {

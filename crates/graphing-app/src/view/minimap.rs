@@ -39,7 +39,7 @@ impl DiagramView {
         if fits || self.player.is_some() {
             return None;
         }
-        let all = scene::union(content, seen);
+        let all = content.union(seen);
         let pad = 8.0;
         let (mw, mh) = (f32::from(MINIMAP_W) - pad * 2.0, f32::from(MINIMAP_H) - pad * 2.0);
         let scale = (mw / all.size.w as f32).min(mh / all.size.h as f32);

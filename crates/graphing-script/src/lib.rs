@@ -337,8 +337,7 @@ pub fn edits_to_ops(d: &Diagram, edits: &[Edit]) -> (Option<Op>, Option<Vec<Stri
                 Op::Batch(batch)
             }
             Edit::AddEdge { from, to, label, kind } => {
-                let base = format!("{from}->{to}");
-                let id = if taken.contains(&base) { (2..).map(|n| format!("{base}#{n}")).find(|k| !taken.contains(k)).unwrap_or(base) } else { base };
+                let id = graphing_model::edge_key(from, to, |k| taken.contains(k));
                 taken.insert(id.clone());
                 let props = kind.iter().map(|k| ("kind".to_string(), Value::Ident(k.clone()))).collect();
                 Op::AddEdge {

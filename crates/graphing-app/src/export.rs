@@ -1,47 +1,61 @@
 //! File-level export and import used by the workspace commands.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
-use graphing_export::{SvgOptions, Theme, scene_of, to_png, to_svg};
+use graphing_export::{AnimOptions, SvgOptions, Theme};
 
-/// Write `src` as `ext`: `svg`, `png` or `sysml` (SysML v2 text).
-/// `base` is the folder of the diagram's own file, for its links.
-pub fn write(src: &str, path: &Path, ext: &str, dark: bool, images: std::collections::BTreeMap<String, Vec<u8>>, base: Option<&Path>, snapshots: &std::collections::BTreeMap<String, Vec<u8>>) -> anyhow::Result<()> {
-    if ext == "sysml" {
-        let doc = graphing_dsl::Document::parse(src);
-        std::fs::write(path, graphing_export::to_sysml2(doc.diagram()))?;
-        return Ok(());
-    }
-    let png = ext == "png";
-    let scene = scene_of(src);
-    let opts = SvgOptions { theme: if dark { Theme::dark() } else { Theme::light() }, images, icons: icons_for(&scene), refs: graphing_export::refs_for(&scene, base, snapshots), ..Default::default() };
-    if png {
-        std::fs::write(path, to_png(&scene, &opts, 2.0)?)?;
-    } else {
-        std::fs::write(path, to_svg(&scene, &opts))?;
-    }
-    Ok(())
+/// How to render, besides the format the file name picks.
+#[derive(Debug, Clone, Copy)]
+pub struct Style {
+    pub dark: bool,
+    /// PNG pixels per diagram unit.
+    pub scale: f32,
+    /// `.svg` and `.png` play the `animate` steps instead of showing the
+    /// diagram still. `.gif`, `.webm` and `.apng` always play them.
+    pub animate: bool,
 }
 
-/// Write the `animate` steps of `src`: GIF, WebM video, animated PNG
-/// (`.png`/`.apng`) or animated SVG, by `path`'s extension.
-pub fn write_animation(src: &str, path: &Path, dark: bool, images: std::collections::BTreeMap<String, Vec<u8>>, base: Option<&Path>, snapshots: &std::collections::BTreeMap<String, Vec<u8>>) -> anyhow::Result<()> {
+impl Default for Style {
+    fn default() -> Self {
+        Self { dark: false, scale: 2.0, animate: false }
+    }
+}
+
+/// Write the diagram `src` to `out` in the format its extension names:
+/// `.svg`, `.png`, `.gif`, `.webm`, `.apng` or `.sysml` (SysML v2 text).
+/// `assets` are its packaged pictures and link snapshots, `base` the folder
+/// of its own file, which pictures and links are relative to.
+pub fn write(src: &str, assets: &BTreeMap<String, Vec<u8>>, base: Option<&Path>, out: &Path, style: Style) -> anyhow::Result<()> {
+    let ext = out.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let doc = graphing_dsl::Document::parse(src);
+    if ext == "sysml" {
+        std::fs::write(out, graphing_export::to_sysml2(doc.diagram()))?;
+        return Ok(());
+    }
     let (scene, timeline) = graphing_export::animation_of(src);
-    let opts = SvgOptions { theme: if dark { Theme::dark() } else { Theme::light() }, images, icons: icons_for(&scene), refs: graphing_export::refs_for(&scene, base, snapshots), ..Default::default() };
-    let anim = graphing_export::AnimOptions::default();
-    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    let bytes = match ext.as_str() {
-        "png" | "apng" => graphing_export::to_apng(&scene, &opts, &timeline, &anim)?,
-        "svg" => graphing_export::to_svg_animated(&scene, &opts, &timeline).into_bytes(),
-        "webm" => graphing_export::to_webm(&scene, &opts, &timeline, &anim)?,
-        _ => graphing_export::to_gif(&scene, &opts, &timeline, &anim)?,
+    let opts = SvgOptions {
+        theme: if style.dark { Theme::dark() } else { Theme::light() },
+        images: graphing_export::pictures(doc.diagram(), assets, base),
+        icons: icons_for(&scene),
+        refs: graphing_export::refs_for(&scene, base, &graphing_export::snapshots(assets)),
+        ..Default::default()
     };
-    std::fs::write(path, bytes)?;
+    let anim = AnimOptions { scale: style.scale.min(2.0), ..Default::default() };
+    let bytes = match (ext.as_str(), style.animate) {
+        ("gif", _) => graphing_export::to_gif(&scene, &opts, &timeline, &anim)?,
+        ("webm", _) => graphing_export::to_webm(&scene, &opts, &timeline, &anim)?,
+        ("png", true) | ("apng", _) => graphing_export::to_apng(&scene, &opts, &timeline, &anim)?,
+        ("png", false) => graphing_export::to_png(&scene, &opts, style.scale)?,
+        (_, true) => graphing_export::to_svg_animated(&scene, &opts, &timeline).into_bytes(),
+        (_, false) => graphing_export::to_svg(&scene, &opts).into_bytes(),
+    };
+    std::fs::write(out, bytes)?;
     Ok(())
 }
 
 /// The Lucide SVG files `scene`'s shapes draw, for SVG and PNG export.
-pub fn icons_for(scene: &graphing_scene::Scene) -> std::collections::BTreeMap<String, String> {
+pub fn icons_for(scene: &graphing_scene::Scene) -> BTreeMap<String, String> {
     use gpui_kit::AssetSource as _;
     graphing_export::icons_used(scene)
         .into_iter()

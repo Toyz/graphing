@@ -121,6 +121,29 @@ pub struct Glyph {
     pub size: Option<f64>,
 }
 
+impl Glyph {
+    /// Where the icon goes in `r`. Corner icons are 14 units square, 7 in,
+    /// times `unit`. A centred icon whose box also holds the label keeps to
+    /// the top 60%.
+    pub fn rect(&self, r: Rect, shares_box: bool, unit: f64) -> Rect {
+        let (corner, inset) = (14.0 * unit, 7.0 * unit);
+        let share = self.size.unwrap_or(0.45);
+        match self.at {
+            GlyphAt::Center => {
+                let area = if shares_box { r.size.h * 0.6 } else { r.size.h };
+                let s = r.size.w.min(area) * share;
+                Rect::new(r.origin.x + (r.size.w - s) / 2.0, r.origin.y + (area - s) / 2.0, s, s)
+            }
+            GlyphAt::TopLeft => Rect::new(r.origin.x + inset, r.origin.y + inset, corner, corner),
+            GlyphAt::TopRight => Rect::new(r.origin.x + r.size.w - inset - corner, r.origin.y + inset, corner, corner),
+            GlyphAt::Left => {
+                let s = r.size.h * share;
+                Rect::new(r.origin.x + (r.size.h - s) / 2.0, r.origin.y + (r.size.h - s) / 2.0, s, s)
+            }
+        }
+    }
+}
+
 /// Where a shape's label goes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]

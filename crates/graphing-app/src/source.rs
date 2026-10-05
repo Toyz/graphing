@@ -339,9 +339,7 @@ pub(crate) fn candidates(want: &Want, d: &Diagram) -> Vec<Candidate> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::Settings;
-    use crate::workspace::Workspace;
-    use gpui_kit::{AppContext, TestAppContext, VisualTestContext};
+    use gpui_kit::TestAppContext;
 
     #[gpui_kit::test]
     fn opened_file_shows_diagnostics_and_highlights(cx: &mut TestAppContext) {
@@ -349,19 +347,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("bad.gph");
         std::fs::write(&file, "a: rect \"A\"\nlayout { bogus }\n").unwrap();
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            graphing_ui::install(true, None, cx);
-        });
-        let mut ws = None;
-        let window = cx.add_window(|window, cx| {
-            let w = cx.new(|cx| Workspace::new(vec![file.clone()], Settings::default(), Vec::new(), window, cx));
-            ws = Some(w.clone());
-            gpui_kit::base::Root::new(w, window, cx)
-        });
-        let ws = ws.unwrap();
-        let cx = VisualTestContext::from_window(*window, cx).into_mut();
-        cx.run_until_parked();
+        let (ws, cx) = crate::test_support::workspace(cx, vec![file.clone()]);
         let editor = ws.read_with(cx, |w, _| w.editor_at(0));
         let n = editor.read_with(cx, |e, _| e.diagnostics().map_or(0, |d| d.len()));
         assert_eq!(n, 1, "the bad layout entry is flagged");

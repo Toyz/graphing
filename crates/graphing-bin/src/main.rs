@@ -87,8 +87,8 @@ fn main() -> ExitCode {
 }
 
 fn check(file: &Path) -> ExitCode {
-    let src = match std::fs::read_to_string(file) {
-        Ok(s) => s,
+    let src = match load(file) {
+        Ok(p) => p.doc,
         Err(e) => {
             eprintln!("graphing: {}: {e}", file.display());
             return ExitCode::FAILURE;
@@ -105,39 +105,9 @@ fn check(file: &Path) -> ExitCode {
     if doc.diags().is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
 
-/// The diagram text, plus picture bytes by `src` (packaged assets and files
-/// linked relative to the diagram).
-/// Diagram text and its pictures (by `src`); see [`load_all`] for links.
-fn load(file: &Path) -> anyhow::Result<(String, std::collections::BTreeMap<String, Vec<u8>>)> {
-    load_all(file).map(|(src, images, _)| (src, images))
-}
-
-/// Text, pictures by `src`, and snapshots of linked diagrams by `src`.
-#[allow(clippy::type_complexity)]
-fn load_all(file: &Path) -> anyhow::Result<(String, std::collections::BTreeMap<String, Vec<u8>>, std::collections::BTreeMap<String, Vec<u8>>)> {
-    let bytes = std::fs::read(file)?;
-    let (src, assets) = if graphing_package::is_package(&bytes) {
-        let pkg = graphing_package::read(&bytes)?;
-        (pkg.doc, pkg.assets)
-    } else {
-        (String::from_utf8(bytes)?, Default::default())
-    };
-    let doc = graphing_dsl::Document::parse(src.as_str());
-    let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
-    let mut images = std::collections::BTreeMap::new();
-    // Pictures only: a link's `src` names a diagram.
-    for n in doc.diagram().nodes.iter().filter(|n| !graphing_scene::notation::is_link(n)) {
-        let Some(s) = doc.diagram().node_prop(n, "src").map(graphing_model::Value::text) else { continue };
-        let bytes = match s.strip_prefix(graphing_package::ASSET_PREFIX) {
-            Some(name) => assets.get(name).cloned(),
-            None => std::fs::read(dir.join(&s)).ok(),
-        };
-        if let Some(b) = bytes {
-            images.insert(s, b);
-        }
-    }
-    let snapshots = graphing_export::snapshots(&assets);
-    Ok((src, images, snapshots))
+/// A `.gph` or `.gphz` file as a package (plain text has no assets).
+fn load(file: &Path) -> anyhow::Result<graphing_package::Package> {
+    Ok(graphing_package::open(std::fs::read(file)?)?)
 }
 
 fn pack(input: &Path, out: &Path) -> anyhow::Result<()> {
@@ -153,16 +123,14 @@ fn pack(input: &Path, out: &Path) -> anyhow::Result<()> {
         // Snapshots of linked diagrams, as `unpack` left them.
         if let Ok(dir) = std::fs::read_dir(input.join("assets").join("linked")) {
             for e in dir.flatten().filter(|e| e.path().is_file()) {
-                pkg.assets.insert(format!("{}{}", graphing_package::LINKED_PREFIX, e.file_name().to_string_lossy()), std::fs::read(e.path())?);
+                pkg.assets.insert(graphing_package::linked_name(&e.file_name().to_string_lossy()), std::fs::read(e.path())?);
             }
         }
     } else {
         // A .gph: linked pictures move inside and their `src` is rewritten.
-        let (mut text, images) = load(input)?;
-        for (src, bytes) in images {
-            if src.starts_with(graphing_package::ASSET_PREFIX) {
-                continue;
-            }
+        let mut text = load(input)?.doc;
+        let doc = graphing_dsl::Document::parse(text.as_str());
+        for (src, bytes) in graphing_export::pictures(doc.diagram(), &Default::default(), input.parent()) {
             let reference = pkg.add_asset(&src, bytes);
             text = text.replace(&format!("\"{src}\""), &format!("\"{reference}\""));
         }
@@ -209,28 +177,8 @@ fn info(file: &Path) -> anyhow::Result<()> {
 }
 
 fn render(file: &Path, out: &Path, dark: bool, scale: f32, animate: bool) -> anyhow::Result<()> {
-    use graphing_export::{AnimOptions, SvgOptions, Theme};
-    let (src, images, snapshots) = load_all(file)?;
-    let ext = out.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    // `.sysml` writes SysML v2 text instead of a picture.
-    if ext == "sysml" {
-        let doc = graphing_dsl::Document::parse(src);
-        std::fs::write(out, graphing_export::to_sysml2(doc.diagram()))?;
-        return Ok(());
-    }
-    let (scene, timeline) = graphing_export::animation_of(&src);
-    let opts = SvgOptions { theme: if dark { Theme::dark() } else { Theme::light() }, images, icons: graphing_app::icons_for(&scene), refs: graphing_export::refs_for(&scene, file.parent(), &snapshots), ..Default::default() };
-    let anim = AnimOptions { scale: scale.min(2.0), ..Default::default() };
-    let bytes = match (ext.as_str(), animate) {
-        ("gif", _) => graphing_export::to_gif(&scene, &opts, &timeline, &anim)?,
-        ("webm", _) => graphing_export::to_webm(&scene, &opts, &timeline, &anim)?,
-        ("png" | "apng", true) | ("apng", false) => graphing_export::to_apng(&scene, &opts, &timeline, &anim)?,
-        ("png", false) => graphing_export::to_png(&scene, &opts, scale)?,
-        (_, true) => graphing_export::to_svg_animated(&scene, &opts, &timeline).into_bytes(),
-        (_, false) => graphing_export::to_svg(&scene, &opts).into_bytes(),
-    };
-    std::fs::write(out, bytes)?;
-    Ok(())
+    let pkg = load(file)?;
+    graphing_app::export::write(&pkg.doc, &pkg.assets, file.parent(), out, graphing_app::export::Style { dark, scale, animate })
 }
 
 fn import(file: &Path, out: Option<&Path>) -> anyhow::Result<()> {

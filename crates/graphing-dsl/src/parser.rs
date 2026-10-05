@@ -18,9 +18,10 @@ pub fn parse(src: &str) -> (File, Vec<Diag>) {
         let kind = match kind {
             Some(k) if p.at_eol() => k,
             Some(_) | None => {
-                let at = p.toks.get(p.pos).map(|t| t.span.clone()).unwrap_or(0..0);
+                let at = p.toks.get(p.pos).or(p.toks.last()).map(|t| t.span.clone()).unwrap_or(0..0);
                 p.diag(at, "unexpected input, line kept as is");
-                p.skip_line();
+                p.pos = start;
+                p.skip_stmt();
                 StmtKind::Unknown
             }
         };
@@ -63,6 +64,41 @@ impl Parser {
         while self.peek() == Some(&Tok::Newline) {
             self.pos += 1;
         }
+    }
+
+    /// Skip a broken statement from its first token: through its blocks when
+    /// they close, so their lines do not read as statements of their own;
+    /// only its first line when a block never closes (mid-typing), so the
+    /// rest of the file still counts.
+    fn skip_stmt(&mut self) {
+        let start = self.pos;
+        self.skip_line();
+        if self.peek().is_none() && self.toks[start..].iter().filter(|t| t.tok == Tok::LBrace).count() > self.toks[start..].iter().filter(|t| t.tok == Tok::RBrace).count() {
+            self.pos = start;
+            while !self.at_eol() {
+                self.pos += 1;
+            }
+        }
+    }
+
+    /// Whether a `{` comes next, on this line or after blank lines (a
+    /// statement never starts with `{`, so one on its own line belongs to
+    /// the statement above). Moves onto it.
+    fn brace_next(&mut self) -> bool {
+        let mut at = self.pos;
+        while self.toks.get(at).is_some_and(|t| t.tok == Tok::Newline) {
+            at += 1;
+        }
+        let found = self.toks.get(at).is_some_and(|t| t.tok == Tok::LBrace);
+        if found {
+            self.pos = at;
+        }
+        found
+    }
+
+    /// Whether the token `n` ahead, past line breaks, is a `{`.
+    fn brace_at(&self, n: usize) -> bool {
+        self.toks[self.pos + n..].iter().find(|t| t.tok != Tok::Newline).is_some_and(|t| t.tok == Tok::LBrace)
     }
 
     /// Skip to end of line, treating braces as nesting so a broken block is
@@ -156,7 +192,7 @@ impl Parser {
                 "diagram" => {
                     self.pos += 1;
                     let title = self.string();
-                    let props = if self.peek() == Some(&Tok::LBrace) { Some(self.props()?) } else { None };
+                    let props = if self.brace_next() { Some(self.props()?) } else { None };
                     return Some(StmtKind::Diagram { title, props });
                 }
                 "use" => {
@@ -171,6 +207,9 @@ impl Parser {
                 "style" if matches!(next, Some(Tok::Ident(_))) => {
                     self.pos += 1;
                     let name = self.ident()?;
+                    if !self.brace_next() {
+                        return None;
+                    }
                     let props = self.props()?;
                     return Some(StmtKind::Style { name, props });
                 }
@@ -178,12 +217,14 @@ impl Parser {
                     self.pos += 1;
                     return self.group().map(StmtKind::Group);
                 }
-                "layout" if next == Some(&Tok::LBrace) => {
+                "layout" if self.brace_at(1) => {
                     self.pos += 1;
+                    self.brace_next();
                     return self.layout().map(StmtKind::Layout);
                 }
-                "animate" if next == Some(&Tok::LBrace) => {
+                "animate" if self.brace_at(1) => {
                     self.pos += 1;
+                    self.brace_next();
                     return self.animate().map(StmtKind::Animate);
                 }
                 _ => {}
@@ -245,7 +286,7 @@ impl Parser {
         let stencil = self.path();
         let label = self.string();
         let classes = self.classes();
-        let props = if self.peek() == Some(&Tok::LBrace) { self.props() } else { None };
+        let props = if self.brace_next() { self.props() } else { None };
         NodeDecl { id, stencil, label, classes, props }
     }
 
@@ -266,14 +307,14 @@ impl Parser {
         }
         let label = self.string();
         let classes = self.classes();
-        let props = if self.peek() == Some(&Tok::LBrace) { self.props() } else { None };
+        let props = if self.brace_next() { Some(self.props()?) } else { None };
         Some(EdgeDecl { id, chain, arrows, arrow_spans, label, classes, props })
     }
 
     fn group(&mut self) -> Option<GroupDecl> {
         let id = self.ident()?;
         let label = self.string();
-        if self.peek() != Some(&Tok::LBrace) {
+        if !self.brace_next() {
             return None;
         }
         let open = self.bump().span;
@@ -288,7 +329,7 @@ impl Parser {
             }
         }
         let close = self.bump().span;
-        let props = if self.peek() == Some(&Tok::LBrace) { self.props() } else { None };
+        let props = if self.brace_next() { Some(self.props()?) } else { None };
         Some(GroupDecl { id, label, members, body: open.start..close.end, props })
     }
 
@@ -321,7 +362,8 @@ impl Parser {
 
     /// A prop value: string, number, color, ident, or `[v, v, ...]`.
     fn value(&mut self) -> Option<Spanned<Value>> {
-        let t = self.bump();
+        let t = self.toks.get(self.pos)?.clone();
+        self.pos += 1;
         let value = match t.tok {
             Tok::Str(s) => Value::Str(s),
             Tok::Num(n) => Value::Num(n),
@@ -374,7 +416,7 @@ impl Parser {
             self.skip_newlines();
             match self.peek()? {
                 Tok::RBrace => break,
-                Tok::Ident(_) => {
+                Tok::Ident(_) | Tok::Str(_) => {
                     let start = self.pos;
                     match self.layout_entry() {
                         Some(e) if self.at_eol() || self.peek() == Some(&Tok::RBrace) => entries.push(e),
@@ -402,18 +444,27 @@ impl Parser {
     }
 
     fn layout_entry(&mut self) -> Option<LayoutEntry> {
+        // `"a->b#2" via ...` names a parallel edge by its key.
+        if let Some(key) = self.string() {
+            return self.layout_geometry(LayoutTarget::Id(key.value), key.span);
+        }
         let first = self.endpoint()?;
-        let start = first.span.start;
         let node = |s: String| s.split('.').next().unwrap_or_default().to_string();
-        let target = if self.arrow().is_some() {
+        let (target, end) = if self.arrow().is_some() {
             self.pos += 1;
             let to = self.endpoint()?;
-            LayoutTarget::Edge(node(first.value), node(to.value))
+            (LayoutTarget::Edge(node(first.value), node(to.value)), to.span.end)
         } else {
-            LayoutTarget::Id(first.value)
+            (LayoutTarget::Id(first.value), first.span.end)
         };
+        self.layout_geometry(target, first.span.start..end)
+    }
+
+    /// The numbers after a layout entry's target: `x y [WxH] [via x y, ...]`.
+    fn layout_geometry(&mut self, target: LayoutTarget, target_span: Span) -> Option<LayoutEntry> {
+        let start = target_span.start;
         let mut entry =
-            LayoutEntry { target, span: start..0, geom: None, pos: None, size: None, via_span: None, via: Vec::new() };
+            LayoutEntry { target, target_span, span: start..0, geom: None, pos: None, size: None, via_span: None, via: Vec::new() };
         if let Some(Tok::Num(_)) = self.peek() {
             let gstart = self.span().start;
             let x = self.num()?;
@@ -495,7 +546,7 @@ impl Parser {
             }
             seconds = Some(n);
         }
-        if self.peek() != Some(&Tok::LBrace) {
+        if !self.brace_next() {
             return None;
         }
         self.pos += 1;
@@ -509,11 +560,11 @@ impl Parser {
                     ease = Some(self.ident()?);
                 }
                 Tok::Ident(w) if w == "move" => {
-                    self.pos += 1;
+                    let start = self.bump().span.start;
                     let target = self.endpoint()?;
                     let x = self.num()?;
                     let y = self.num()?;
-                    moves.push((target, (x, y)));
+                    moves.push(MoveDecl { target, to: (x, y), span: start..self.toks[self.pos - 1].span.end });
                 }
                 Tok::Ident(_) => actions.push(self.action()?),
                 _ => return None,

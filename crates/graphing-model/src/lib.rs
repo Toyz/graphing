@@ -281,6 +281,34 @@ impl Diagram {
     }
 }
 
+/// `base` if `taken` says it is free, else the first free `{base}{sep}{n}`
+/// counting from 2.
+pub fn unique_id(base: &str, sep: &str, taken: impl Fn(&str) -> bool) -> String {
+    if !taken(base) {
+        return base.to_string();
+    }
+    (2..).map(|n| format!("{base}{sep}{n}")).find(|id| !taken(id)).expect("unbounded")
+}
+
+/// The key an unnamed `from -> to` edge gets: `a->b`, then `a->b#2`,
+/// `a->b#3` for parallel ones.
+pub fn edge_key(from: &str, to: &str, taken: impl Fn(&str) -> bool) -> String {
+    unique_id(&format!("{from}->{to}"), "#", taken)
+}
+
+/// Whether `e`'s id is the key an unnamed edge gets (`a->b`, `a->b#2`)
+/// rather than a name of its own.
+pub fn is_auto_key(e: &Edge) -> bool {
+    let base = format!("{}->{}", e.from, e.to);
+    e.id == base || e.id.strip_prefix(&base).and_then(|r| r.strip_prefix('#')).is_some_and(|n| n.parse::<u32>().is_ok())
+}
+
+/// The key of the `n`th (from 0) unnamed `from -> to` edge.
+pub fn nth_edge_key(from: &str, to: &str, n: usize) -> String {
+    if n == 0 { format!("{from}->{to}") } else { format!("{from}->{to}#{}", n + 1) }
+}
+
+/// Last value for `key` in a prop list (later entries win).
 pub fn find_prop<'a>(props: &'a Props, key: &str) -> Option<&'a Value> {
     props.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v)
 }

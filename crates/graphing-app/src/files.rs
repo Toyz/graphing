@@ -12,17 +12,22 @@ pub fn is_package_path(path: &Path) -> bool {
     path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gphz"))
 }
 
+/// Whether `path` is a graphing diagram (`.gph` or `.gphz`) by its extension.
+pub fn is_diagram_path(path: &Path) -> bool {
+    is_package_path(path) || path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gph"))
+}
+
+/// Whether graphing opens or imports `path`, by its extension.
+pub fn is_openable(path: &Path) -> bool {
+    is_diagram_path(path) || graphing_import::Format::of_path(path).is_some()
+}
+
 /// The diagram text and its packaged assets (empty for plain `.gph`).
 /// Line endings come back as `\n`, so edits splice one kind of line;
 /// [`save`] puts `\r\n` back for a file that had it.
 pub fn load(path: &Path) -> io::Result<(String, Assets)> {
-    let bytes = std::fs::read(path)?;
-    if graphing_package::is_package(&bytes) {
-        let pkg = graphing_package::read(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        return Ok((pkg.doc.replace("\r\n", "\n"), pkg.assets));
-    }
-    let text = String::from_utf8(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-    Ok((text.replace("\r\n", "\n"), Assets::new()))
+    let pkg = graphing_package::open(std::fs::read(path)?).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    Ok((pkg.doc, pkg.assets))
 }
 
 /// Whether the file at `path` ends its first line with `\r\n`.

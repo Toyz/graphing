@@ -22,8 +22,10 @@ cargo test --workspace -q
     splices the text and reparses.
   - Never regenerate a whole file; comments and formatting must survive.
 - Every new `Op` or text edit path gets a round-trip case in
-  `crates/graphing-dsl/src/tests.rs`. `check` asserts the model equals the
-  reparsed text and that the inverse restores it.
+  `crates/graphing-dsl/src/tests/`. `check` asserts the model equals the
+  reparsed text and that the inverse restores it. Also add the op to the
+  generator in `tests/fuzz.rs`; `GRAPHING_FUZZ=20000 cargo test --release
+  -p graphing-dsl fuzz` runs a deep pass.
 - Geometry lives only in the `layout { }` block.
 - `gpui-kit = 0.7` pulls `gpui-pre =0.3.7` (not crates.io `gpui 0.2`). Use
   `gpui_kit::*` imports; do not add a separate `gpui` dependency.

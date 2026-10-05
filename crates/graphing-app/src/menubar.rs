@@ -360,31 +360,12 @@ impl Workspace {
 mod tests {
     use std::time::Duration;
 
-    use gpui_kit::{AppContext, Modifiers, TestAppContext, VisualTestContext, point, px};
+    use gpui_kit::{Modifiers, TestAppContext, point, px};
 
-    use crate::settings::Settings;
-    use crate::workspace::Workspace;
 
     #[gpui_kit::test]
     fn menu_stays_open_while_pointer_moves_onto_it(cx: &mut TestAppContext) {
-        let dir = std::env::temp_dir().join(format!("graphing-menu-test-{}", std::process::id()));
-        // SAFETY: tests in this binary that read config all point at this dir.
-        unsafe { std::env::set_var("GRAPHING_CONFIG_DIR", &dir) };
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::keymap::apply(cx, &[]);
-            crate::palette::bind_keys(cx);
-            graphing_ui::install(true, None, cx);
-        });
-        let mut ws = None;
-        let window = cx.add_window(|window, cx| {
-            let w = cx.new(|cx| Workspace::new(Vec::new(), Settings::default(), Vec::new(), window, cx));
-            ws = Some(w.clone());
-            gpui_kit::base::Root::new(w, window, cx)
-        });
-        let ws = ws.unwrap();
-        let cx = VisualTestContext::from_window(*window, cx).into_mut();
-        cx.run_until_parked();
+        let (ws, cx) = crate::test_support::workspace(cx, Vec::new());
 
         let title = cx.debug_bounds("menu-title-0").expect("File title rendered");
         cx.simulate_mouse_move(title.center(), None, Modifiers::default());
@@ -411,24 +392,7 @@ mod tests {
 
     #[gpui_kit::test]
     fn import_opens_a_submenu_that_stays_while_the_pointer_crosses(cx: &mut TestAppContext) {
-        let dir = std::env::temp_dir().join(format!("graphing-menu-test-{}", std::process::id()));
-        // SAFETY: tests in this binary that read config all point at this dir.
-        unsafe { std::env::set_var("GRAPHING_CONFIG_DIR", &dir) };
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::keymap::apply(cx, &[]);
-            crate::palette::bind_keys(cx);
-            graphing_ui::install(true, None, cx);
-        });
-        let mut ws = None;
-        let window = cx.add_window(|window, cx| {
-            let w = cx.new(|cx| Workspace::new(Vec::new(), Settings::default(), Vec::new(), window, cx));
-            ws = Some(w.clone());
-            gpui_kit::base::Root::new(w, window, cx)
-        });
-        let ws = ws.unwrap();
-        let cx = VisualTestContext::from_window(*window, cx).into_mut();
-        cx.run_until_parked();
+        let (ws, cx) = crate::test_support::workspace(cx, Vec::new());
         let title = cx.debug_bounds("menu-title-0").expect("File title");
         cx.simulate_mouse_move(title.center(), None, Modifiers::default());
         cx.run_until_parked();

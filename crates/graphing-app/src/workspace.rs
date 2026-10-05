@@ -28,6 +28,8 @@ use graphing_dsl::Document;
 use graphing_model::Op;
 use graphing_scene::Shape;
 
+mod debug;
+
 
 struct Tab {
     view: Entity<DiagramView>,
@@ -243,127 +245,6 @@ impl Workspace {
     /// Every open tab's canvas.
     pub(crate) fn views(&self) -> Vec<Entity<DiagramView>> {
         self.tabs.iter().map(|t| t.view.clone()).collect()
-    }
-
-    /// Debug builds: `GRAPHING_DEBUG_OPEN=palette` or `menu:N` opens that UI at
-    /// start, so overlays can be screenshotted without synthetic input.
-    fn debug_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !cfg!(debug_assertions) {
-            return;
-        }
-        match std::env::var("GRAPHING_DEBUG_OPEN").as_deref() {
-            Ok("palette") => self.open_palette(window, cx),
-            Ok("settings") => self.show_tool(Tool::Settings, window, cx),
-            Ok("templates") => self.open_templates(window, cx),
-            // `zoom:3` zooms the canvas in after the first paint (minimap).
-            Ok(m) if m.starts_with("zoom:") => {
-                let z: f32 = m[5..].parse().unwrap_or(2.0);
-                let view = self.view().clone();
-                cx.spawn_in(window, async move |_, cx| {
-                    cx.background_executor().timer(std::time::Duration::from_millis(800)).await;
-                    view.update(cx, |v, cx| v.zoom_center(z, cx));
-                })
-                .detach();
-            }
-            // `library:containers` (or `library:shapes`) filters the Shapes pane.
-            Ok("library:containers") => self.library_filter = crate::library::Kinds::Containers,
-            Ok("library:shapes") => self.library_filter = crate::library::Kinds::Shapes,
-            // `notation:*` lists every notation in the Shapes pane, `notation:bpmn` one.
-            Ok(m) if m.starts_with("notation:") => self.library_scope = m["notation:".len()..].to_string(),
-            // `settings:query` opens settings searched for `query`, and with
-            // `settings:oss=name` the Open Source entry `name` expanded.
-            Ok(m) if m.starts_with("settings:") => {
-                self.show_tool(Tool::Settings, window, cx);
-                let rest = &m["settings:".len()..];
-                let (query, open) = rest.split_once("=").map_or((rest, None), |(q, o)| (q, Some(o)));
-                let query = if query == "oss" { "open source" } else { query };
-                self.settings_query.update(cx, |s, cx| s.set_value(query.to_string(), window, cx));
-                self.oss_open = open.and_then(|name| crate::open_source::CRATES.iter().position(|c| c.name == name));
-            }
-            // `ask-images` shows the picture dialog with a sample picture.
-            Ok("ask-images") => {
-                let view = self.view().clone();
-                let img = crate::view::IncomingImage { name: "photo.png".into(), path: Some("photo.png".into()), bytes: Vec::new() };
-                let at = view.read(cx).center();
-                self.add_images(view, vec![img], at, window, cx);
-            }
-            // `confirm-delete:<id>` shows the delete dialog for `id`.
-            Ok(m) if m.starts_with("confirm-delete:") => {
-                let id = m["confirm-delete:".len()..].to_string();
-                let view = self.view().clone();
-                self.confirm_delete(view, vec![id], window, cx);
-            }
-            // `open-color:fill@api` selects `api` and opens its fill picker.
-            Ok(m) if m.starts_with("open-color:") => {
-                let (key, id) = m["open-color:".len()..].split_once('@').unwrap_or(("fill", ""));
-                let key = match key {
-                    "stroke" => "stroke",
-                    "color" => "color",
-                    _ => "fill",
-                };
-                let id = id.to_string();
-                self.with_view(cx, |v, cx| v.select(vec![id.clone()], cx));
-                {
-                    self.right_tab = RightTab::Style;
-                    self.toggle_color(&id, key, window, cx);
-                }
-            }
-            Ok(m) if m.starts_with("drag-bench:") => {
-                let id = m["drag-bench:".len()..].to_string();
-                self.with_view(cx, |v, cx| v.select(vec![id], cx));
-                let view = self.view().clone();
-                cx.spawn_in(window, async move |_, cx| {
-                    cx.background_executor().timer(std::time::Duration::from_millis(1500)).await;
-                    let t = std::time::Instant::now();
-                    for i in 1..=60 {
-                        view.update(cx, |v, cx| v.bench_drag(i, cx));
-                        cx.background_executor().timer(std::time::Duration::from_millis(16)).await;
-                    }
-                    eprintln!("[bench] 60 steps in {:?}", t.elapsed());
-                    cx.update(|_, cx| cx.quit()).ok();
-                })
-                .detach();
-            }
-            // `menu:0` opens the first menu; `menu:0/7` also its submenu at row 7.
-            Ok(m) if m.starts_with("menu:") => {
-                let (menu, sub) = m[5..].split_once('/').map_or((&m[5..], None), |(a, b)| (a, b.parse().ok()));
-                self.menu.open = menu.parse().ok();
-                self.menu.sub = sub;
-            }
-            // `context:id` right-clicks `id` (`context:` alone, the empty
-            // canvas); `rename:id` starts editing its label. After the first
-            // paint, which places the canvas.
-            // `step:N` previews step N (from 1); `play` starts the animation.
-            Ok(m) if m.starts_with("step:") || m == "play" => {
-                let n: usize = m.strip_prefix("step:").and_then(|n| n.parse().ok()).unwrap_or(0);
-                let view = self.view().clone();
-                cx.spawn_in(window, async move |_, cx| {
-                    cx.background_executor().timer(std::time::Duration::from_millis(800)).await;
-                    view.update_in(cx, |v, _, cx| if n == 0 { v.toggle_play(cx) } else { v.preview_step(n - 1, cx) }).ok();
-                })
-                .detach();
-            }
-            Ok(m) if m.starts_with("context:") || m.starts_with("rename:") => {
-                let (kind, id) = m.split_once(':').map(|(k, i)| (k.to_string(), i.to_string())).unwrap_or_default();
-                let view = self.view().clone();
-                cx.spawn_in(window, async move |_, cx| {
-                    cx.background_executor().timer(std::time::Duration::from_millis(800)).await;
-                    view.update_in(cx, |v, window, cx| if kind == "rename" { v.start_rename(&id, window, cx) } else { v.debug_context(&id, cx) }).ok();
-                })
-                .detach();
-            }
-            Ok(m) if m.starts_with("open-select:") => {
-                let id = ["diagram-kind", "shape", "edge-kind", "node-group", "group-add", "group-look", "group-kind", "library-notation"].into_iter().find(|id| *id == &m[12..]);
-                if let Some(id) = id {
-                    self.toggle_select(id, window, cx);
-                }
-            }
-            Ok(sel) if sel.starts_with("select:") => {
-                let ids = sel[7..].split(',').map(str::to_string).collect();
-                self.with_view(cx, |v, cx| v.select(ids, cx));
-            }
-            _ => {}
-        }
     }
 
     pub(crate) fn view(&self) -> &Entity<DiagramView> {
@@ -791,9 +672,12 @@ impl Workspace {
 
     /// Save `view` to `path` and make that its file (recents, session).
     pub(crate) fn save_as(&mut self, view: &Entity<DiagramView>, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        let moved = view.read(cx).path() != Some(&path);
         match view.update(cx, |v, cx| v.save_to(path.clone(), cx)) {
             Ok(()) => {
-                self.toast(format!("saved {}", path.display()), window, cx);
+                if moved {
+                    self.toast(format!("saved {}", path.display()), window, cx);
+                }
                 self.recent.retain(|p| p != &path);
                 self.recent.insert(0, path);
                 self.save_session(cx);
@@ -975,7 +859,7 @@ impl Workspace {
         let name = |p: &PathBuf| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let what = if one { name(&paths[0]) } else { format!("{} diagrams", paths.len()) };
         // Links point at graphing files; other formats are imported.
-        let linkable = paths.iter().all(|p| p.extension().is_some_and(|e| e == "gph" || e == "gphz"));
+        let linkable = paths.iter().all(|p| crate::files::is_diagram_path(p));
         let (open, insert, link) = (paths.clone(), (paths.clone(), view.clone()), (paths, view));
         let mut choices = vec![
             Choice {
@@ -1027,7 +911,7 @@ impl Workspace {
 
     /// Open a graphing file, or import another format into a new tab.
     pub(crate) fn open_or_import(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        if path.extension().is_some_and(|e| e == "gph" || e == "gphz") {
+        if crate::files::is_diagram_path(&path) {
             return self.open_path(path, window, cx);
         }
         match crate::export::import(&path, None) {
@@ -1043,7 +927,7 @@ impl Workspace {
 
     /// Copy the diagram at `path` into `view` at `at` (one undo step).
     pub(crate) fn insert_diagram(&mut self, view: &Entity<DiagramView>, path: &std::path::Path, at: graphing_model::Point, window: &mut Window, cx: &mut Context<Self>) {
-        let src = if path.extension().is_some_and(|e| e == "gph" || e == "gphz") {
+        let src = if crate::files::is_diagram_path(path) {
             crate::files::load(path).map(|(src, _)| src).map_err(anyhow::Error::from)
         } else {
             crate::export::import(path, None).map(|(src, _)| src)
@@ -1093,12 +977,10 @@ impl Workspace {
         let views: Vec<Entity<DiagramView>> = self.dirty_tabs(cx).into_iter().map(|i| self.tabs[i].view.clone()).collect();
         cx.spawn_in(window, async move |ws, cx| {
             for view in views {
-                let (path, pictures, title) = view.read_with(cx, |v, _| (v.path().cloned(), !v.assets().is_empty(), v.title().to_string()));
+                let (path, (dir, name)) = view.read_with(cx, |v, _| (v.path().cloned(), v.dialog_start(v.save_ext())));
                 let path = match path {
                     Some(p) => p,
                     None => {
-                        let dir = std::env::current_dir().unwrap_or_default();
-                        let name = format!("{}.{}", if title.is_empty() { "untitled" } else { &title }, if pictures { "gphz" } else { "gph" });
                         let Ok(rx) = ws.update(cx, |_, cx| cx.prompt_for_new_path(&dir, Some(&name))) else { return };
                         match rx.await {
                             Ok(Ok(Some(p))) => p,
@@ -1109,8 +991,7 @@ impl Workspace {
                         }
                     }
                 };
-                // Pictures need the package format.
-                let path = if pictures && !crate::files::is_package_path(&path) { path.with_extension("gphz") } else { path };
+                let path = view.read_with(cx, |v, _| v.save_path(path));
                 let saved = view.update(cx, |v, cx| v.save_to(path.clone(), cx));
                 if let Err(e) = saved {
                     ws.update_in(cx, |ws, window, cx| ws.toast(format!("quit cancelled: saving {} failed: {e}", path.display()), window, cx)).ok();
@@ -1178,40 +1059,21 @@ impl Workspace {
 
     fn save(&mut self, force_dialog: bool, window: &mut Window, cx: &mut Context<Self>) {
         let view = self.view().clone();
-        let current = view.read(cx).path().cloned();
-        let has_pictures = !view.read(cx).assets().is_empty();
-        match current {
-            // Pictures need the package; a plain file becomes one beside it.
-            Some(path) if !force_dialog && has_pictures && !crate::files::is_package_path(&path) => {
-                self.save_as(&view, path.with_extension("gphz"), window, cx);
-            }
+        match view.read(cx).path().cloned() {
             Some(path) if !force_dialog => {
-                if let Err(e) = view.update(cx, |v, cx| v.save_to(path, cx)) {
-                    self.toast(format!("save failed: {e}"), window, cx);
-                }
+                let path = view.read(cx).save_path(path);
+                self.save_as(&view, path, window, cx);
             }
             _ => {
-                let dir = current
-                    .as_ref()
-                    .and_then(|p| p.parent().map(PathBuf::from))
-                    .or_else(|| std::env::current_dir().ok())
-                    .unwrap_or_default();
-                let ext = if has_pictures { "gphz" } else { "gph" };
-                let name = current.as_ref().map(|p| p.with_extension(ext)).and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).unwrap_or_else(|| format!("untitled.{ext}"));
+                let (dir, name) = view.read(cx).dialog_start(view.read(cx).save_ext());
                 let rx = cx.prompt_for_new_path(&dir, Some(&name));
                 cx.spawn_in(window, async move |ws, cx| {
-                    if let Ok(Ok(Some(path))) = rx.await {
-                        ws.update_in(cx, |ws, window, cx| {
-                            let path = if has_pictures && !crate::files::is_package_path(&path) { path.with_extension("gphz") } else { path };
-                            if let Err(e) = view.update(cx, |v, cx| v.save_to(path.clone(), cx)) {
-                                ws.toast(format!("save failed: {e}"), window, cx);
-                            }
-                            ws.recent.retain(|p| p != &path);
-                            ws.recent.insert(0, path);
-                            ws.save_session(cx);
-                        })
-                        .ok();
-                    }
+                    let Ok(Ok(Some(path))) = rx.await else { return };
+                    ws.update_in(cx, |ws, window, cx| {
+                        let path = view.read(cx).save_path(path);
+                        ws.save_as(&view, path, window, cx);
+                    })
+                    .ok();
                 })
                 .detach();
             }
@@ -1468,59 +1330,27 @@ impl Workspace {
 
     // ---- export / import ----
 
-    fn export(&mut self, ext: &'static str, window: &mut Window, cx: &mut Context<Self>) {
+    /// Export to a file the user picks; its extension picks the format and
+    /// `ext` is the one suggested. `animate` plays the steps (File > Export
+    /// > Animation). Rendering runs off the UI thread.
+    fn export(&mut self, ext: &'static str, animate: bool, window: &mut Window, cx: &mut Context<Self>) {
         let view = self.view().read(cx);
-        let src = view.doc().source().to_string();
-        let base = view.path().cloned().unwrap_or_else(|| PathBuf::from("untitled.gph"));
-        // Links in the diagram resolve against its own folder, else the
-        // snapshots its package keeps.
-        let folder: Option<PathBuf> = view.path().and_then(|p| p.parent().map(PathBuf::from));
-        let snapshots = graphing_export::snapshots(view.assets());
-        let dir = base.parent().map(PathBuf::from).filter(|p| !p.as_os_str().is_empty()).or_else(|| std::env::current_dir().ok()).unwrap_or_default();
-        let name = base.with_extension(ext).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        let dark = cx.ui().dark;
-        let images = self.view().read(cx).picture_bytes();
-        let rx = cx.prompt_for_new_path(&dir, Some(&name));
-        cx.spawn_in(window, async move |ws, cx| {
-            let Ok(Ok(Some(path))) = rx.await else { return };
-            let result = crate::export::write(&src, &path, ext, dark, images, folder.as_deref(), &snapshots);
-            ws.update_in(cx, |ws, window, cx| {
-                let msg = match result {
-                    Ok(()) => format!("exported {}", path.display()),
-                    Err(e) => format!("export failed: {e}"),
-                };
-                ws.toast(msg, window, cx);
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    /// Save the diagram's animation: `.gif`, `.webm` video, an animated
-    /// `.png`, or an animated `.svg`, by the name chosen. Rendering runs off the UI thread.
-    fn export_animation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let view = self.view().read(cx);
-        if view.steps().is_empty() {
+        if animate && view.steps().is_empty() {
             self.sequence_open = true;
             self.toast("no steps to animate yet: select shapes and press + in the sequence strip", window, cx);
             return;
         }
-        let src = view.doc().source().to_string();
-        let base = view.path().cloned().unwrap_or_else(|| PathBuf::from("untitled.gph"));
-        // Links in the diagram resolve against its own folder, else the
-        // snapshots its package keeps.
-        let folder: Option<PathBuf> = view.path().and_then(|p| p.parent().map(PathBuf::from));
-        let snapshots = graphing_export::snapshots(view.assets());
-        let dir = base.parent().map(PathBuf::from).filter(|p| !p.as_os_str().is_empty()).or_else(|| std::env::current_dir().ok()).unwrap_or_default();
-        let name = base.with_extension("gif").file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        let dark = cx.ui().dark;
-        let images = view.picture_bytes();
+        let (src, assets, base) = (view.doc().source().to_string(), view.assets().clone(), view.folder().map(PathBuf::from));
+        let style = crate::export::Style { dark: cx.ui().dark, animate, scale: if animate { 1.0 } else { 2.0 } };
+        let (dir, name) = view.dialog_start(ext);
         let rx = cx.prompt_for_new_path(&dir, Some(&name));
         cx.spawn_in(window, async move |ws, cx| {
             let Ok(Ok(Some(path))) = rx.await else { return };
-            ws.update_in(cx, |ws, window, cx| ws.toast(format!("rendering {}...", path.display()), window, cx)).ok();
+            if animate {
+                ws.update_in(cx, |ws, window, cx| ws.toast(format!("rendering {}...", path.display()), window, cx)).ok();
+            }
             let target = path.clone();
-            let result = cx.background_executor().spawn(async move { crate::export::write_animation(&src, &target, dark, images, folder.as_deref(), &snapshots) }).await;
+            let result = cx.background_executor().spawn(async move { crate::export::write(&src, &assets, base.as_deref(), &target, style) }).await;
             ws.update_in(cx, |ws, window, cx| {
                 let msg = match result {
                     Ok(()) => format!("exported {}", path.display()),
@@ -1943,7 +1773,7 @@ impl Render for Workspace {
             .on_action(cx.listener(|ws, _: &NewFile, w, cx| ws.new_tab(Document::parse(""), None, w, cx)))
             // Diagram files dropped anywhere but a canvas open.
             .on_drop(cx.listener(|ws, paths: &gpui_kit::ExternalPaths, window, cx| {
-                for p in paths.paths().iter().filter(|p| crate::view::is_diagram_file(p)) {
+                for p in paths.paths().iter().filter(|p| crate::files::is_openable(p)) {
                     ws.open_or_import(p.clone(), window, cx);
                 }
             }))
@@ -1972,9 +1802,9 @@ impl Render for Workspace {
             .on_action(cx.listener(|ws, _: &SpreadH, _, cx| ws.with_view(cx, |v, cx| v.align(Align::SpreadX, cx))))
             .on_action(cx.listener(|ws, _: &SpreadV, _, cx| ws.with_view(cx, |v, cx| v.align(Align::SpreadY, cx))))
             .on_action(cx.listener(|ws, _: &SameSize, _, cx| ws.with_view(cx, |v, cx| v.same_size(cx))))
-            .on_action(cx.listener(|ws, _: &ExportSvg, w, cx| ws.export("svg", w, cx)))
-            .on_action(cx.listener(|ws, _: &ExportPng, w, cx| ws.export("png", w, cx)))
-            .on_action(cx.listener(|ws, _: &ExportAnimation, w, cx| ws.export_animation(w, cx)))
+            .on_action(cx.listener(|ws, _: &ExportSvg, w, cx| ws.export("svg", false, w, cx)))
+            .on_action(cx.listener(|ws, _: &ExportPng, w, cx| ws.export("png", false, w, cx)))
+            .on_action(cx.listener(|ws, _: &ExportAnimation, w, cx| ws.export("gif", true, w, cx)))
             .on_action(cx.listener(|ws, _: &NewFromTemplate, w, cx| ws.open_templates(w, cx)))
             .on_action(cx.listener(|ws, _: &PlayAnimation, _, cx| {
                 // Playing needs steps; the strip shows how to make them.
@@ -1985,7 +1815,7 @@ impl Render for Workspace {
                 ws.sequence_open = !ws.sequence_open;
                 cx.notify();
             }))
-            .on_action(cx.listener(|ws, _: &ExportSysml, w, cx| ws.export("sysml", w, cx)))
+            .on_action(cx.listener(|ws, _: &ExportSysml, w, cx| ws.export("sysml", false, w, cx)))
             .on_action(cx.listener(|ws, _: &ImportFile, w, cx| ws.import(None, w, cx)))
             .on_action(cx.listener(|ws, a: &ImportAs, w, cx| ws.import(graphing_import::Format::parse(&a.format), w, cx)))
             .on_action(cx.listener(|ws, _: &InsertImage, w, cx| ws.insert_image_dialog(w, cx)))

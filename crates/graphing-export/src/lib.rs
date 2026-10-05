@@ -12,7 +12,7 @@ use graphing_dsl::Document;
 use graphing_model::{Op, Placement, Point, Rect};
 use graphing_scene::anim::{AnimState, Timeline};
 use graphing_scene::stencils::GlyphAt;
-use graphing_scene::{union, EdgeLine, End, FrameBox, GroupBox, NodeBox, PORT, PortBox, Scene, Shape, Side, notation};
+use graphing_scene::{EdgeLine, End, FrameBox, GroupBox, NodeBox, PORT, PortBox, Scene, Shape, Side, notation};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
@@ -100,10 +100,8 @@ pub struct RefDiagram {
 
 /// Load the diagram at `path` (`.gph` or `.gphz`) for a link to show.
 pub fn load_ref(path: &std::path::Path) -> Option<RefDiagram> {
-    let bytes = std::fs::read(path).ok()?;
-    let src = if graphing_package::is_package(&bytes) { graphing_package::read(&bytes).ok()?.doc } else { String::from_utf8(bytes).ok()? };
-    let title = Document::parse(src.as_str()).diagram().title.clone().unwrap_or_else(|| path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
-    Some(RefDiagram { title, scene: scene_of(&src) })
+    let pkg = graphing_package::open(std::fs::read(path).ok()?).ok()?;
+    ref_from_text(&pkg.doc, &path.to_string_lossy())
 }
 
 /// Every diagram `scene`'s links point at, `src` resolved against `base`
@@ -116,15 +114,30 @@ pub fn refs_for(scene: &Scene, base: Option<&std::path::Path>, snapshots: &std::
         .filter_map(|n| n.reference.clone())
         .filter(|src| !src.is_empty())
         .filter_map(|src| {
-            let path = resolve_link(&src, base);
-            let found = load_ref(&path).or_else(|| snapshots.get(&src).and_then(|b| ref_from_text(&String::from_utf8_lossy(b), &src)));
+            let path = resolve_src(&src, base);
+            let found = load_ref(&path).or_else(|| ref_from_text(&String::from_utf8_lossy(snapshots.get(&src)?), &src));
             found.map(|r| (src, r))
         })
         .collect()
 }
 
-/// A link's `src` against the linking file's folder.
-pub fn resolve_link(src: &str, base: Option<&std::path::Path>) -> std::path::PathBuf {
+/// The `src` to write for the file at `path`: relative to `base`, the
+/// diagram file's folder, when it is inside it, and with forward slashes so
+/// the text reads the same on every platform.
+pub fn src_for(path: &std::path::Path, base: Option<&std::path::Path>) -> String {
+    // The same folder can be spelled two ways (macOS's `/var` is
+    // `/private/var`), so compare resolved paths when the spellings differ.
+    let relative = base.and_then(|b| {
+        path.strip_prefix(b).ok().map(std::path::Path::to_path_buf).or_else(|| {
+            let (p, b) = (path.canonicalize().ok()?, b.canonicalize().ok()?);
+            p.strip_prefix(b).ok().map(std::path::Path::to_path_buf)
+        })
+    });
+    relative.as_deref().unwrap_or(path).to_string_lossy().replace('\\', "/")
+}
+
+/// A picture's or link's `src` against the diagram file's folder.
+pub fn resolve_src(src: &str, base: Option<&std::path::Path>) -> std::path::PathBuf {
     let p = std::path::Path::new(src);
     match base {
         Some(b) if p.is_relative() => b.join(p),
@@ -141,12 +154,32 @@ pub fn ref_from_text(text: &str, src: &str) -> Option<RefDiagram> {
 
 /// The `src` of every diagram link in `.gph` text.
 pub fn link_sources(text: &str) -> Vec<String> {
-    let doc = Document::parse(text);
-    let d = doc.diagram();
-    let reg = graphing_scene::stencils::registry();
+    sources(Document::parse(text).diagram(), true)
+}
+
+/// The `src` of every picture in `d` (a link's `src` names a diagram).
+pub fn picture_sources(d: &graphing_model::Diagram) -> Vec<String> {
+    sources(d, false)
+}
+
+/// A picture's bytes: packaged (`asset:<name>` in `assets`), else the file
+/// `src` names against `base`, the diagram file's folder.
+pub fn picture(src: &str, assets: &std::collections::BTreeMap<String, Vec<u8>>, base: Option<&std::path::Path>) -> Option<Vec<u8>> {
+    match src.strip_prefix(graphing_package::ASSET_PREFIX) {
+        Some(name) => assets.get(name).cloned(),
+        None => std::fs::read(resolve_src(src, base)).ok(),
+    }
+}
+
+/// Bytes of every picture `d` shows, by `src`; see [`picture`].
+pub fn pictures(d: &graphing_model::Diagram, assets: &std::collections::BTreeMap<String, Vec<u8>>, base: Option<&std::path::Path>) -> std::collections::BTreeMap<String, Vec<u8>> {
+    picture_sources(d).into_iter().filter_map(|src| Some((src.clone(), picture(&src, assets, base)?))).collect()
+}
+
+fn sources(d: &graphing_model::Diagram, links: bool) -> Vec<String> {
     d.nodes
         .iter()
-        .filter(|n| reg.resolve(n.stencil.as_deref()).render.as_deref() == Some("ref"))
+        .filter(|n| notation::is_link(n) == links)
         .filter_map(|n| d.node_prop(n, "src").map(graphing_model::Value::text))
         .filter(|s| !s.is_empty())
         .collect()
@@ -157,16 +190,8 @@ pub fn link_sources(text: &str) -> Vec<String> {
 /// keeps the snapshot it had.
 pub fn snapshot_links(text: &str, base: Option<&std::path::Path>, assets: &mut std::collections::BTreeMap<String, Vec<u8>>) {
     for src in link_sources(text) {
-        let Ok(bytes) = std::fs::read(resolve_link(&src, base)) else { continue };
-        let doc = if graphing_package::is_package(&bytes) {
-            match graphing_package::read(&bytes) {
-                Ok(p) => p.doc.into_bytes(),
-                Err(_) => continue,
-            }
-        } else {
-            bytes
-        };
-        assets.insert(format!("{}{src}", graphing_package::LINKED_PREFIX), doc);
+        let Some(pkg) = std::fs::read(resolve_src(&src, base)).ok().and_then(|b| graphing_package::open(b).ok()) else { continue };
+        assets.insert(graphing_package::linked_name(&src), pkg.doc.into_bytes());
     }
 }
 
@@ -225,7 +250,7 @@ pub fn anim_viewport(scene: &Scene, timeline: &Timeline) -> Option<Rect> {
         return Some(base);
     }
     let n = (timeline.total * 4.0).ceil() as usize;
-    Some((0..=n).filter_map(|i| timeline.scene_for(&timeline.state(i as f64 / 4.0)).and_then(|s| s.content_bounds())).fold(base, union))
+    Some((0..=n).filter_map(|i| timeline.scene_for(&timeline.state(i as f64 / 4.0)).and_then(|s| s.content_bounds())).fold(base, |a, b| a.union(b)))
 }
 
 /// The whole animation as one looping SVG, played by the browser (SMIL).
@@ -437,7 +462,7 @@ fn render(scene: &Scene, opts: &SvgOptions, motion: &Motion, viewport: Option<Re
     let b = viewport.or_else(|| scene.bounds()).unwrap_or(Rect::new(0.0, 0.0, 100.0, 100.0));
     // Port names and flow labels hang a little outside boxes.
     let p = if scene.frame.is_some() { opts.padding.min(8.0) } else { opts.padding };
-    let whole = Rect::new(b.origin.x - p, b.origin.y - p, b.size.w + 2.0 * p, b.size.h + 2.0 * p);
+    let whole = b.inflate(p);
     let (w, h) = (whole.size.w, whole.size.h);
     let mut s = String::new();
     let _ = writeln!(
@@ -832,9 +857,7 @@ impl Kit<'_> {
         if let Some(cmds) = &nb.mark {
             let _ = writeln!(s, r#"<path d="{}" fill="{}"/>"#, path_data(cmds), hex(stroke));
         }
-        if let Some(g) = &nb.glyph {
-            self.glyph(s, g, r, ink, !nb.label_below && !nb.label.is_empty());
-        }
+        self.glyph(s, nb, ink);
         if nb.shape == Shape::Cylinder {
             let ry = cyl_ry(r);
             let _ = writeln!(
@@ -941,9 +964,7 @@ impl Kit<'_> {
                 let _ = writeln!(s, r#"<text x="{}" y="{}" font-size="11" fill="{}" text-anchor="middle" dominant-baseline="central">{}</text>"#, n(c.x), n(c.y), hex(t.muted), esc(&what));
             }
         }
-        if let Some(g) = &nb.glyph {
-            self.glyph(s, g, r, ink, false);
-        }
+        self.glyph(s, nb, ink);
     }
 
     /// A timing signal (see `graphing_scene::wave`).
@@ -987,21 +1008,10 @@ impl Kit<'_> {
     }
 
     /// A shape's Lucide icon, from [`SvgOptions::icons`].
-    fn glyph(&self, s: &mut String, g: &graphing_scene::stencils::Glyph, r: Rect, ink: u32, shares_box: bool) {
+    fn glyph(&self, s: &mut String, nb: &NodeBox, ink: u32) {
+        let Some((g, at)) = nb.glyph_at() else { return };
         let Some(svg) = self.icons.get(&g.icon) else { return };
-        let (x, y, size) = match g.at {
-            GlyphAt::Center => {
-                let area = if shares_box { r.size.h * 0.6 } else { r.size.h };
-                let size = r.size.w.min(area) * g.size.unwrap_or(0.45);
-                (r.origin.x + (r.size.w - size) / 2.0, r.origin.y + (area - size) / 2.0, size)
-            }
-            GlyphAt::TopLeft => (r.origin.x + 7.0, r.origin.y + 7.0, 14.0),
-            GlyphAt::TopRight => (r.origin.x + r.size.w - 21.0, r.origin.y + 7.0, 14.0),
-            GlyphAt::Left => {
-                let size = r.size.h * g.size.unwrap_or(0.45);
-                (r.origin.x + (r.size.h - size) / 2.0, r.origin.y + (r.size.h - size) / 2.0, size)
-            }
-        };
+        let (x, y, size) = (at.origin.x, at.origin.y, at.size.w);
         // The file's own drawing, restyled: Lucide draws 24x24 strokes.
         let inner = svg.split_once('>').map(|(_, rest)| rest).unwrap_or("");
         let inner = inner.rsplit_once("</svg>").map_or(inner, |(body, _)| body);
@@ -1586,6 +1596,29 @@ pub fn render_source(src: &str, opts: &SvgOptions) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn src_is_relative_with_forward_slashes() {
+        let base = std::path::Path::new("/work/diagrams");
+        assert_eq!(src_for(&base.join("sub").join("auth.gph"), Some(base)), "sub/auth.gph");
+        assert_eq!(src_for(std::path::Path::new("/elsewhere/x.gph"), Some(base)), "/elsewhere/x.gph");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn src_is_relative_through_a_symlinked_folder() {
+        // macOS spells its temp folder both `/var/...` and `/private/var/...`.
+        let real = std::env::temp_dir().join(format!("graphing-src-real-{}", std::process::id()));
+        let link = std::env::temp_dir().join(format!("graphing-src-link-{}", std::process::id()));
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::write(real.join("auth.gph"), "a\n").unwrap();
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert_eq!(src_for(&real.join("auth.gph"), Some(&link)), "auth.gph");
+        assert_eq!(src_for(&link.join("auth.gph"), Some(&real)), "auth.gph");
+        std::fs::remove_file(&link).ok();
+        std::fs::remove_dir_all(&real).ok();
+    }
 
     #[test]
     fn every_builtin_stencil_exports() {

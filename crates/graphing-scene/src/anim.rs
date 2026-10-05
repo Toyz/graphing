@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 
 use graphing_model::{Diagram, Ease, Point, Rect, Verb};
 
-use crate::{Scene, union};
+use crate::Scene;
 
 /// Seconds a step lasts when it does not say.
 pub const DEFAULT_STEP: f64 = 2.0;
@@ -113,7 +113,7 @@ fn expand(d: &Diagram, id: &str, out: &mut Vec<String>) {
 
 impl Timeline {
     pub fn new(d: &Diagram, scene: &Scene) -> Self {
-        let mut t = Timeline { whole: scene.content_bounds().map(|r| pad(r, FOCUS_PAD)), diagram: d.clone(), ..Default::default() };
+        let mut t = Timeline { whole: scene.content_bounds().map(|r| r.inflate(FOCUS_PAD)), diagram: d.clone(), ..Default::default() };
         t.ends = d.edges.iter().map(|e| (e.id.clone(), (e.from.clone(), e.to.clone()))).collect();
         let start: HashMap<String, Point> = scene.nodes.iter().map(|n| (n.id.clone(), n.rect.origin)).collect();
         // Where nodes are as steps move them, and how far groups have gone.
@@ -183,8 +183,8 @@ impl Timeline {
                                     let (dx, dy) = offset(id);
                                     footprint(scene, id).map(|r| Rect::new(r.origin.x + dx, r.origin.y + dy, r.size.w, r.size.h))
                                 })
-                                .reduce(union)
-                                .map(|r| pad(r, FOCUS_PAD))
+                                .reduce(|a, b| a.union(b))
+                                .map(|r| r.inflate(FOCUS_PAD))
                         };
                         if let Some(r) = rect {
                             t.focus.push((at, r, ease));
@@ -310,18 +310,13 @@ impl Timeline {
 
 /// A node's box with any label under it, or a group's box.
 fn footprint(scene: &Scene, id: &str) -> Option<Rect> {
-    scene.nodes.iter().find(|n| n.id == id).map(crate::NodeBox::footprint).or_else(|| scene.rect_of(id)).or_else(|| {
-        let e = scene.edges.iter().find(|e| e.id == id)?;
-        let xs = e.points.iter().map(|p| p.x);
-        let ys = e.points.iter().map(|p| p.y);
-        let (x0, x1) = (xs.clone().fold(f64::MAX, f64::min), xs.fold(f64::MIN, f64::max));
-        let (y0, y1) = (ys.clone().fold(f64::MAX, f64::min), ys.fold(f64::MIN, f64::max));
-        Some(Rect::new(x0, y0, x1 - x0, y1 - y0))
-    })
-}
-
-fn pad(r: Rect, by: f64) -> Rect {
-    Rect::new(r.origin.x - by, r.origin.y - by, r.size.w + by * 2.0, r.size.h + by * 2.0)
+    scene
+        .nodes
+        .iter()
+        .find(|n| n.id == id)
+        .map(crate::NodeBox::footprint)
+        .or_else(|| scene.rect_of(id))
+        .or_else(|| Rect::around(scene.edges.iter().find(|e| e.id == id)?.points.iter().copied()))
 }
 
 /// Points along a polyline every `gap` units, shifted by `offset`: where
@@ -398,7 +393,7 @@ mod tests {
     #[test]
     fn focus_moves_the_camera() {
         let (t, scene) = with_steps(vec![step(None, &[(Verb::Focus, &["a"])]), step(None, &[(Verb::Focus, &["all"])])]);
-        let whole = pad(scene.content_bounds().unwrap(), FOCUS_PAD);
+        let whole = scene.content_bounds().unwrap().inflate(FOCUS_PAD);
         assert_eq!(t.state(0.0).camera, Some(whole));
         let on_a = t.state(1.9).camera.unwrap();
         assert!(on_a.size.w < whole.size.w / 2.0, "{on_a:?}");

@@ -11,21 +11,8 @@ fn screen(v: &DiagramView, p: graphing_model::Point) -> Point<Pixels> {
 }
 
 fn open<'a>(cx: &'a mut TestAppContext, src: &str) -> (Entity<DiagramView>, &'a mut VisualTestContext) {
-    cx.update(|cx| {
-        gpui_kit::init(cx);
-        crate::keymap::apply(cx, &[]);
-    });
     let doc = Document::parse(src);
-    // Wrapped in Root like the real window, which inputs rely on.
-    let mut view = None;
-    let window = cx.add_window(|window, cx| {
-        let v = cx.new(|cx| DiagramView::new(doc, None, window, cx));
-        view = Some(v.clone());
-        gpui_kit::base::Root::new(v, window, cx)
-    });
-    let cx = VisualTestContext::from_window(*window, cx).into_mut();
-    cx.run_until_parked();
-    (view.expect("built"), cx)
+    crate::test_support::window(cx, |window, cx| cx.new(|cx| DiagramView::new(doc, None, window, cx)))
 }
 
 fn at(view: &Entity<DiagramView>, cx: &mut VisualTestContext, x: f64, y: f64) -> Point<Pixels> {

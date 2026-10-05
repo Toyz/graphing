@@ -37,6 +37,24 @@ impl Rect {
         Point::new(self.origin.x + self.size.w / 2.0, self.origin.y + self.size.h / 2.0)
     }
 
+    /// Grown by `by` on every side.
+    pub fn inflate(&self, by: f64) -> Rect {
+        Rect::new(self.origin.x - by, self.origin.y - by, self.size.w + by * 2.0, self.size.h + by * 2.0)
+    }
+
+    /// The smallest rect holding both.
+    pub fn union(&self, o: Rect) -> Rect {
+        let (x0, y0) = (self.origin.x.min(o.origin.x), self.origin.y.min(o.origin.y));
+        let x1 = (self.origin.x + self.size.w).max(o.origin.x + o.size.w);
+        let y1 = (self.origin.y + self.size.h).max(o.origin.y + o.size.h);
+        Rect::new(x0, y0, x1 - x0, y1 - y0)
+    }
+
+    /// The smallest rect holding every point; `None` for none.
+    pub fn around(points: impl IntoIterator<Item = Point>) -> Option<Rect> {
+        points.into_iter().map(|p| Rect::new(p.x, p.y, 0.0, 0.0)).reduce(|a, b| a.union(b))
+    }
+
     pub fn contains(&self, p: Point) -> bool {
         p.x >= self.origin.x
             && p.y >= self.origin.y

@@ -66,15 +66,28 @@ impl Format {
     pub fn parse(id: &str) -> Option<Self> {
         Format::ALL.into_iter().find(|f| f.id() == id)
     }
+
+    /// File extensions it is known by.
+    pub fn extensions(self) -> &'static [&'static str] {
+        match self {
+            Format::Mermaid => &["mmd", "mermaid"],
+            Format::DrawIo => &["drawio", "dio"],
+            Format::Sysml2 => &["sysml", "kerml"],
+            Format::Visio => &["vsdx"],
+        }
+    }
+
+    /// The format `path`'s extension names, if any.
+    pub fn of_path(path: &Path) -> Option<Self> {
+        let ext = path.extension()?.to_str()?.to_lowercase();
+        Format::ALL.into_iter().find(|f| f.extensions().contains(&ext.as_str()))
+    }
 }
 
 /// Guess the format from extension, then content.
 pub fn detect(path: &Path, content: &str) -> Option<Format> {
-    match path.extension().and_then(|e| e.to_str()).map(str::to_lowercase).as_deref() {
-        Some("mmd" | "mermaid") => return Some(Format::Mermaid),
-        Some("drawio" | "dio") => return Some(Format::DrawIo),
-        Some("sysml" | "kerml") => return Some(Format::Sysml2),
-        _ => {}
+    if let Some(f) = Format::of_path(path) {
+        return Some(f);
     }
     let t = content.trim_start();
     if t.starts_with('<') && (t.contains("<mxfile") || t.contains("<mxGraphModel")) {
@@ -112,7 +125,7 @@ pub fn import_file(path: &Path) -> Result<Imported, ImportError> {
 /// Import `path` as `format`, or as whatever it looks like with `None`.
 pub fn import_file_as(path: &Path, format: Option<Format>) -> Result<Imported, ImportError> {
     let bytes = std::fs::read(path).map_err(|e| ImportError::Parse(e.to_string()))?;
-    let zipped = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("vsdx")) || bytes.starts_with(b"PK\x03\x04");
+    let zipped = Format::of_path(path) == Some(Format::Visio) || bytes.starts_with(b"PK\x03\x04");
     let format = match format {
         Some(f) => f,
         None if zipped => Format::Visio,

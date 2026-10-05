@@ -62,6 +62,44 @@ impl Op {
     }
 }
 
+/// Give unnamed edges the keys the text would: `a->b`, then `a->b#2` and
+/// on in order, as lowering does. Bend points move with their edges.
+fn renumber(d: &mut Diagram) {
+    let mut taken = std::collections::HashSet::new();
+    let mut moved = Vec::new();
+    for e in &mut d.edges {
+        if crate::is_auto_key(e) {
+            let key = crate::edge_key(&e.from, &e.to, |k| taken.contains(k));
+            if key != e.id {
+                moved.push((std::mem::replace(&mut e.id, key.clone()), key));
+            }
+        }
+        taken.insert(e.id.clone());
+    }
+    let points: Vec<_> = moved.iter().map(|(old, _)| d.waypoints.remove(old)).collect();
+    for ((_, new), pts) in moved.into_iter().zip(points) {
+        if let Some(p) = pts {
+            d.waypoints.insert(new, p);
+        }
+    }
+}
+
+/// Take removed ids out of the animation: from action targets (an action
+/// left with none goes) and moves. Undo restores each changed step.
+fn forget_in_steps(d: &mut Diagram, gone: &[String], undo: &mut Vec<Op>) {
+    for (index, step) in d.steps.iter_mut().enumerate() {
+        let mut next = step.clone();
+        for a in &mut next.actions {
+            a.targets.retain(|t| !gone.contains(t));
+        }
+        next.actions.retain(|a| !a.targets.is_empty());
+        next.moves.retain(|(t, _)| !gone.contains(t));
+        if next != *step {
+            undo.push(Op::SetStep { index, step: std::mem::replace(step, next) });
+        }
+    }
+}
+
 pub(crate) fn apply(d: &mut Diagram, op: &Op) -> Option<Op> {
     match op {
         Op::AddNode { node, index } => {
@@ -103,24 +141,39 @@ pub(crate) fn apply(d: &mut Diagram, op: &Op) -> Option<Op> {
                     g.members.retain(|m| m != id);
                 }
             }
+            let mut gone = vec![id.clone()];
+            gone.extend(undo.iter().filter_map(|o| match o {
+                Op::AddEdge { edge, .. } => Some(edge.id.clone()),
+                _ => None,
+            }));
+            forget_in_steps(d, &gone, &mut undo);
+            renumber(d);
             Some(Op::Batch(undo))
         }
         Op::AddEdge { edge, index } => {
-            if d.edge(&edge.id).is_some() {
+            // An unnamed edge's key comes from its place among its parallel
+            // siblings, so it may take a key in use; the rest move up.
+            let auto = crate::is_auto_key(edge);
+            if !auto && d.edge(&edge.id).is_some() {
                 return None;
             }
             let i = (*index).min(d.edges.len());
             d.edges.insert(i, edge.clone());
-            Some(Op::RemoveEdge { id: edge.id.clone() })
+            if auto {
+                renumber(d);
+            }
+            Some(Op::RemoveEdge { id: d.edges[i].id.clone() })
         }
         Op::RemoveEdge { id } => {
             let index = d.edges.iter().position(|e| &e.id == id)?;
             let edge = d.edges.remove(index);
-            let add = Op::AddEdge { edge, index };
-            Some(match d.waypoints.remove(id) {
-                Some(points) => Op::Batch(vec![add, Op::SetWaypoints { id: id.clone(), points }]),
-                None => add,
-            })
+            let mut undo = vec![Op::AddEdge { edge, index }];
+            if let Some(points) = d.waypoints.remove(id) {
+                undo.push(Op::SetWaypoints { id: id.clone(), points });
+            }
+            forget_in_steps(d, std::slice::from_ref(id), &mut undo);
+            renumber(d);
+            Some(if undo.len() == 1 { undo.remove(0) } else { Op::Batch(undo) })
         }
         Op::SetLabel { id, label } => {
             let slot = if let Some(n) = d.node_mut(id) {
@@ -216,6 +269,7 @@ pub(crate) fn apply(d: &mut Diagram, op: &Op) -> Option<Op> {
                     g.members.retain(|m| m != id);
                 }
             }
+            forget_in_steps(d, std::slice::from_ref(id), &mut undo);
             Some(Op::Batch(undo))
         }
         Op::SetTitle { title } => {

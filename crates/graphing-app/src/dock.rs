@@ -438,27 +438,35 @@ fn close_pane(group: &TabGroupContext, ws: &WeakEntity<Workspace>, pane: &Entity
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::Settings;
     use gpui_kit::{TestAppContext, VisualTestContext};
 
     fn open(cx: &mut TestAppContext, files: Vec<std::path::PathBuf>) -> (Entity<Workspace>, &mut VisualTestContext) {
-        let dir = std::env::temp_dir().join(format!("graphing-dock-test-{}", std::process::id()));
-        // SAFETY: tests in this binary that read config all point at this dir.
-        unsafe { std::env::set_var("GRAPHING_CONFIG_DIR", &dir) };
-        cx.update(|cx| {
-            gpui_kit::init(cx);
-            crate::keymap::apply(cx, &[]);
-            graphing_ui::install(true, None, cx);
+        crate::test_support::workspace(cx, files)
+    }
+
+    #[gpui_kit::test]
+    fn saving_an_empty_diagram_after_a_cancelled_save(cx: &mut TestAppContext) {
+        let (ws, cx) = open(cx, Vec::new());
+        let view = ws.read_with(cx, |w, _| w.view().clone());
+        cx.update(|window, cx| {
+            let f = view.read(cx).focus_handle().clone();
+            window.focus(&f, cx);
         });
-        let mut ws = None;
-        let window = cx.add_window(|window, cx| {
-            let w = cx.new(|cx| Workspace::new(files, Settings::default(), Vec::new(), window, cx));
-            ws = Some(w.clone());
-            gpui_kit::base::Root::new(w, window, cx)
-        });
-        let cx = VisualTestContext::from_window(*window, cx).into_mut();
         cx.run_until_parked();
-        (ws.unwrap(), cx)
+        cx.simulate_keystrokes("secondary-s");
+        cx.run_until_parked();
+        cx.simulate_new_path_selection(|_| None);
+        cx.run_until_parked();
+        cx.simulate_keystrokes("secondary-a");
+        cx.run_until_parked();
+        cx.simulate_keystrokes("secondary-s");
+        cx.run_until_parked();
+        let path = std::env::temp_dir().join(format!("graphing-empty-save-{}.gph", std::process::id()));
+        let to = path.clone();
+        cx.simulate_new_path_selection(move |_| Some(to));
+        cx.run_until_parked();
+        assert!(path.exists());
+        std::fs::remove_file(&path).ok();
     }
 
     #[gpui_kit::test]
@@ -741,7 +749,7 @@ mod tests {
     #[ignore]
     fn drag_timing(cx: &mut TestAppContext) {
         let file = std::env::temp_dir().join("graphing-drag-timing.gph");
-        std::fs::write(&file, include_str!("bench_infra.gph.txt")).unwrap();
+        std::fs::write(&file, include_str!("testdata/bench_infra.gph")).unwrap();
         let (ws, cx) = open(cx, vec![file]);
         let view = ws.read_with(cx, |w, _| w.view().clone());
         let p = |x: f64, y: f64, cx: &mut VisualTestContext| view.read_with(cx, |v, _| v.screen_point(graphing_model::Point::new(x, y)));

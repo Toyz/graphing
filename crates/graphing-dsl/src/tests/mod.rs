@@ -1,4 +1,7 @@
 use super::*;
+
+mod edge;
+mod fuzz;
 use graphing_model::{Action, Arrow, Edge, Node, Op, Placement, Point, Size, Step, Value, Verb};
 
 const SAMPLE: &str = r##"# comments survive every edit
@@ -35,7 +38,7 @@ fn doc() -> Document {
 
 /// Apply through the document and through the model; both must agree, and
 /// the inverse must restore the original text's model.
-fn check(doc: &mut Document, op: Op) {
+pub(super) fn check(doc: &mut Document, op: Op) {
     let before = doc.diagram().clone();
     let mut expect = before.clone();
     expect.apply(&op).expect("op applies to model");
@@ -47,12 +50,23 @@ fn check(doc: &mut Document, op: Op) {
 }
 
 /// Model equality, ignoring node order (implied nodes may move when text
-/// gives them a line).
-fn assert_same(a: &graphing_model::Diagram, b: &graphing_model::Diagram, src: &str) {
-    let mut a = a.clone();
-    let mut b = b.clone();
-    a.nodes.sort_by(|x, y| x.id.cmp(&y.id));
-    b.nodes.sort_by(|x, y| x.id.cmp(&y.id));
+/// gives them a line) and prop order (undoing a removal adds the prop back
+/// at the end of its block; order carries no meaning).
+pub(super) fn assert_same(a: &graphing_model::Diagram, b: &graphing_model::Diagram, src: &str) {
+    fn tidy(d: &graphing_model::Diagram) -> graphing_model::Diagram {
+        let mut d = d.clone();
+        d.nodes.sort_by(|x, y| x.id.cmp(&y.id));
+        // Stable, so repeated keys keep the order that decides which wins.
+        let sort = |p: &mut graphing_model::Props| p.sort_by(|x, y| x.0.cmp(&y.0));
+        d.nodes.iter_mut().for_each(|n| sort(&mut n.props));
+        d.edges.iter_mut().for_each(|e| sort(&mut e.props));
+        d.groups.iter_mut().for_each(|g| sort(&mut g.props));
+        sort(&mut d.props);
+        d
+    }
+    let (a, b) = (tidy(a), tidy(b));
+    assert_eq!(a.title, b.title, "\n{src}");
+    assert_eq!(a.props, b.props, "\n{src}");
     assert_eq!(a.nodes, b.nodes, "\n{src}");
     assert_eq!(a.edges, b.edges, "\n{src}");
     assert_eq!(a.groups, b.groups, "\n{src}");

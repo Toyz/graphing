@@ -3,18 +3,26 @@
 
 use std::collections::HashSet;
 
-use graphing_model::{Diagram, Edge, Group, Node, Op, Placement, Point, Value};
+use graphing_model::{Diagram, Edge, Group, Node, Op, Placement, Point, Props, Value};
 
 /// A prefix for `stem` that no id in `taken` starts with.
 fn prefix_for(stem: &str, d: &Diagram) -> String {
     let base: String = stem.chars().map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' }).collect();
     let base = if base.is_empty() || base.starts_with(|c: char| c.is_ascii_digit() || c == '-') { format!("d_{base}") } else { base };
     let taken: HashSet<&str> = d.nodes.iter().map(|n| n.id.as_str()).chain(d.groups.iter().map(|g| g.id.as_str())).chain(d.edges.iter().map(|e| e.id.as_str())).collect();
-    let clash = |p: &str| taken.iter().any(|t| *t == p || t.starts_with(&format!("{p}_")));
-    if !clash(&base) {
-        return base;
+    graphing_model::unique_id(&base, "", |p| taken.iter().any(|t| *t == p || t.starts_with(&format!("{p}_"))))
+}
+
+/// `props` with what `classes` give in `d`'s styles added, where `props`
+/// does not set the key itself.
+fn inline_styles(props: &Props, classes: &[String], d: &Diagram) -> Props {
+    let mut out = props.clone();
+    for (key, v) in classes.iter().filter_map(|c| d.styles.get(c)).flatten() {
+        if !out.iter().any(|(k, _)| k == key) {
+            out.push((key.clone(), v.clone()));
+        }
     }
-    (2..).map(|n| format!("{base}{n}")).find(|p| !clash(p)).expect("unbounded")
+    out
 }
 
 /// Ops adding everything in `other` to `target`: ids prefixed by the
@@ -35,14 +43,7 @@ pub fn insert(target: &Diagram, other: &Diagram, stem: &str, at: Point) -> Op {
     let mut ops = Vec::new();
     let base = target.nodes.len();
     for (k, n) in other.nodes.iter().enumerate() {
-        let mut props = n.props.clone();
-        for class in &n.classes {
-            for (key, v) in other.styles.get(class).into_iter().flatten() {
-                if !props.iter().any(|(k2, _)| k2 == key) {
-                    props.push((key.clone(), v.clone()));
-                }
-            }
-        }
+        let props = inline_styles(&n.props, &n.classes, &other);
         ops.push(Op::AddNode { node: Node { id: id(&n.id), stencil: n.stencil.clone(), label: Some(n.text().to_string()), classes: Vec::new(), props }, index: base + k });
     }
     let base = target.edges.len();
@@ -50,14 +51,7 @@ pub fn insert(target: &Diagram, other: &Diagram, stem: &str, at: Point) -> Op {
         // Unnamed edges get the key they will have again (`a->b`).
         let auto = e.id.starts_with(&format!("{}->{}", e.from, e.to));
         let eid = if auto { format!("{}->{}", id(&e.from), id(&e.to)) } else { id(&e.id) };
-        let mut props = e.props.clone();
-        for class in &e.classes {
-            for (key, v) in other.styles.get(class).into_iter().flatten() {
-                if !props.iter().any(|(k2, _)| k2 == key) {
-                    props.push((key.clone(), v.clone()));
-                }
-            }
-        }
+        let props = inline_styles(&e.props, &e.classes, &other);
         ops.push(Op::AddEdge {
             edge: Edge { id: eid, from: id(&e.from), to: id(&e.to), from_port: e.from_port.clone(), to_port: e.to_port.clone(), arrow: e.arrow, label: e.label.clone(), classes: Vec::new(), props },
             index: base + k,

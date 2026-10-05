@@ -51,6 +51,11 @@ pub fn lex(src: &str) -> Vec<Token> {
                 i += 1;
                 continue;
             }
+            // A byte order mark or a pasted non-breaking space is a space.
+            0x80.. if src[i..].chars().next().is_some_and(is_blank) => {
+                i += src[i..].chars().next().map_or(1, char::len_utf8);
+                continue;
+            }
             b'\n' => {
                 i += 1;
                 Tok::Newline
@@ -74,13 +79,14 @@ pub fn lex(src: &str) -> Vec<Token> {
                 i += 1;
                 let mut s = String::new();
                 while i < b.len() && b[i] != b'"' && b[i] != b'\n' {
-                    if b[i] == b'\\' && i + 1 < b.len() {
-                        match b[i + 1] {
-                            b'n' => s.push('\n'),
-                            b't' => s.push('\t'),
-                            other => s.push(other as char),
-                        }
-                        i += 2;
+                    if b[i] == b'\\' && i + 1 < b.len() && b[i + 1] != b'\n' {
+                        let ch = src[i + 1..].chars().next().unwrap_or('?');
+                        s.push(match ch {
+                            'n' => '\n',
+                            't' => '\t',
+                            other => other,
+                        });
+                        i += 1 + ch.len_utf8();
                     } else {
                         let ch = src[i..].chars().next().unwrap_or('?');
                         s.push(ch);
@@ -155,9 +161,9 @@ pub fn lex(src: &str) -> Vec<Token> {
                         || b[i] == b'-' && !src[i..].starts_with("->") && !src[i..].starts_with("--")
                         || b[i] == b'.' && b.get(i + 1).is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'_')
                         || b[i].is_ascii_alphanumeric()
-                        || b[i] >= 0x80)
+                        || b[i] >= 0x80 && !src[i..].chars().next().is_some_and(is_blank))
                 {
-                    i += 1;
+                    i += src[i..].chars().next().map_or(1, char::len_utf8);
                 }
                 Tok::Ident(src[start..i].to_string())
             }
@@ -170,6 +176,12 @@ pub fn lex(src: &str) -> Vec<Token> {
         out.push(Token { tok, span: start..i });
     }
     out
+}
+
+/// Non-ASCII characters that separate words: Unicode spaces and the byte
+/// order mark.
+fn is_blank(c: char) -> bool {
+    c.is_whitespace() || c == '\u{feff}'
 }
 
 /// `abc`, `aabbcc`, `aabbccdd` followed by a non-word char.

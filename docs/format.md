@@ -6,6 +6,26 @@ Plain UTF-8 text, the diagram language (see `plan.md`). This is the source
 of truth: diffable, hand-editable, friendly to git. A diagram without
 pictures is always a `.gph`.
 
+Write it the way you like; edits from the canvas keep your style:
+
+- A `{` may open on the same line or on its own line below (group members,
+  props, `layout`, `animate`, steps). A statement never starts with `{`, so
+  one on a line of its own belongs to the statement above.
+- Members and props are separated by commas, line breaks or both; a trailing
+  comma is fine.
+- Comments (`#` or `//`) can go anywhere a space can, inside blocks too.
+  Canvas edits work token by token and keep them.
+- Line endings may be `\n` or `\r\n`, and a byte order mark at the start is
+  ignored.
+- Text broken mid-typing never stops the rest of the file: a block that
+  never closes costs only its first line, and a bad line inside a closed
+  block costs that statement, not the shapes after it.
+
+Unnamed edges get keys from their order: `a -> b` twice is `a->b`, then
+`a->b#2`. A `layout` entry names the first as `a -> b` and the others by
+key in quotes: `"a->b#2" via 300 40`. Adding or removing one of them keeps
+every bend with its own edge.
+
 Pictures can be linked from a `.gph` by path, relative to the file:
 
 ```graphing

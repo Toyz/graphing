@@ -4,8 +4,7 @@ mod color;
 mod combine;
 mod confirm;
 mod dock;
-mod export;
-pub use export::icons_for;
+pub mod export;
 mod files;
 mod media;
 mod inspector;
@@ -23,6 +22,8 @@ mod sequence;
 mod settings_pane;
 mod templates;
 mod source;
+#[cfg(test)]
+mod test_support;
 mod view;
 mod workspace;
 

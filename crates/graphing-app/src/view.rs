@@ -54,10 +54,6 @@ pub enum ViewEvent {
     OpenDiagram(PathBuf, Option<String>),
 }
 
-/// Diagram files graphing opens or imports, by extension.
-pub fn is_diagram_file(p: &std::path::Path) -> bool {
-    p.extension().and_then(|e| e.to_str()).is_some_and(|e| matches!(e.to_lowercase().as_str(), "gph" | "gphz" | "mmd" | "mermaid" | "drawio" | "dio" | "vsdx" | "sysml"))
-}
 
 /// A picture on its way into the diagram.
 #[derive(Debug, Clone)]
@@ -994,7 +990,7 @@ impl DiagramView {
                 // Double-clicking a diagram link opens what it points at.
                 if double && let Some(path) = self.link_target(&scene, &id) {
                     let src = scene.nodes.iter().find(|n| n.id == id).and_then(|n| n.reference.clone()).unwrap_or_default();
-                    let copy = self.assets.get(&format!("{}{src}", graphing_package::LINKED_PREFIX)).map(|b| String::from_utf8_lossy(b).into_owned());
+                    let copy = self.assets.get(&graphing_package::linked_name(&src)).map(|b| String::from_utf8_lossy(b).into_owned());
                     cx.emit(ViewEvent::OpenDiagram(path, copy));
                     return;
                 }
@@ -1353,6 +1349,24 @@ impl DiagramView {
         &self.assets
     }
 
+    /// The extension this diagram saves as: a package once it has pictures.
+    pub fn save_ext(&self) -> &'static str {
+        if self.assets.is_empty() { "gph" } else { "gphz" }
+    }
+
+    /// `path`, made a package if the diagram has pictures and it is not one.
+    pub fn save_path(&self, path: PathBuf) -> PathBuf {
+        if self.assets.is_empty() || crate::files::is_package_path(&path) { path } else { path.with_extension("gphz") }
+    }
+
+    /// Where a file dialog for this diagram opens, and the name it suggests
+    /// with `ext`.
+    pub fn dialog_start(&self, ext: &str) -> (PathBuf, String) {
+        let dir = self.folder().filter(|d| !d.as_os_str().is_empty()).map(PathBuf::from).or_else(|| std::env::current_dir().ok()).unwrap_or_default();
+        let stem = self.path.as_ref().and_then(|p| p.file_stem()).map_or("untitled".into(), |s| s.to_string_lossy());
+        (dir, format!("{stem}.{ext}"))
+    }
+
     /// Keep `bytes` in the package and return the `src` that shows them.
     pub fn add_asset(&mut self, original: &str, bytes: Vec<u8>) -> String {
         let name = graphing_package::asset_name(original, &bytes);
@@ -1362,39 +1376,23 @@ impl DiagramView {
 
     /// The bytes behind a `src`: a packaged asset, or a file path (relative
     /// to the diagram's folder).
+    /// The folder of this diagram's file, which `src` paths are relative to.
+    pub fn folder(&self) -> Option<&std::path::Path> {
+        self.path.as_ref().and_then(|p| p.parent())
+    }
+
     fn image_bytes(&self, src: &str) -> Option<Vec<u8>> {
-        if let Some(name) = src.strip_prefix(graphing_package::ASSET_PREFIX) {
-            return self.assets.get(name).cloned();
-        }
-        let p = std::path::Path::new(src);
-        let p = if p.is_relative() { self.path.as_ref().and_then(|d| d.parent()).map(|d| d.join(p))? } else { p.to_path_buf() };
-        std::fs::read(p).ok()
+        graphing_export::picture(src, &self.assets, self.folder())
     }
 
-    /// Bytes for every picture the diagram uses, by `src` (for export).
-    pub fn picture_bytes(&self) -> std::collections::BTreeMap<String, Vec<u8>> {
-        self.doc
-            .diagram()
-            .nodes
-            .iter()
-            .filter(|n| !graphing_scene::notation::is_link(n))
-            .filter_map(|n| self.doc.diagram().node_prop(n, "src").map(graphing_model::Value::text))
-            .filter_map(|src| self.image_bytes(&src).map(|b| (src, b)))
-            .collect()
-    }
-
-    /// Decode pictures the scene shows that are not cached yet.
-    /// A link to the diagram at `path`, top-left at `at`: `src` relative to
-    /// this diagram's folder when it can be.
+    /// A link to the diagram at `path`, top-left at `at`.
     pub fn add_link(&mut self, path: &std::path::Path, at: WPoint, cx: &mut Context<Self>) {
-        let dir = self.path.as_ref().and_then(|f| f.parent()).map(PathBuf::from);
-        // Forward slashes, so the file reads the same on every platform.
-        let src = dir.as_deref().and_then(|d| path.strip_prefix(d).ok()).unwrap_or(path).to_string_lossy().replace('\\', "/");
+        let src = graphing_export::src_for(path, self.folder());
         let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "link".into());
         let d = self.doc.diagram();
         let base: String = stem.chars().map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' }).collect();
         let base = format!("{}_link", if base.starts_with(|c: char| c.is_alphabetic() || c == '_') { base } else { format!("d{base}") });
-        let id = std::iter::once(base.clone()).chain((2..).map(|n| format!("{base}{n}"))).find(|i| d.node(i).is_none() && d.group(i).is_none()).expect("unbounded");
+        let id = graphing_model::unique_id(&base, "", |i| d.node(i).is_some() || d.group(i).is_some());
         let node = graphing_model::Node { id: id.clone(), stencil: Some("ref".into()), label: None, classes: Vec::new(), props: vec![("src".into(), graphing_model::Value::Str(src))] };
         let index = d.nodes.len();
         let op = Op::Batch(vec![Op::AddNode { node, index }, Op::SetPlacement { id: id.clone(), placement: Some(Placement { pos: WPoint::new(at.x.round(), at.y.round()), size: None }) }]);
@@ -1403,36 +1401,28 @@ impl DiagramView {
         }
     }
 
-    /// Where a link's `src` points, against this diagram's folder.
-    pub(crate) fn resolve_link(&self, src: &str) -> PathBuf {
-        let p = std::path::Path::new(src);
-        match self.path.as_ref().and_then(|f| f.parent()) {
-            Some(dir) if p.is_relative() => dir.join(p),
-            _ => p.to_path_buf(),
-        }
-    }
-
     pub(crate) fn link_target(&self, scene: &Scene, id: &str) -> Option<PathBuf> {
         let src = scene.nodes.iter().find(|n| n.id == id)?.reference.clone().filter(|s| !s.is_empty())?;
-        Some(self.resolve_link(&src))
+        Some(graphing_export::resolve_src(&src, self.folder()))
     }
 
     /// Load the diagrams links point at, again whenever their file changes.
     fn load_links(&self, scene: &Scene) {
         let mut linked = self.linked.borrow_mut();
         for src in scene.nodes.iter().filter_map(|n| n.reference.as_ref()).filter(|s| !s.is_empty()) {
-            let path = self.resolve_link(src);
+            let path = graphing_export::resolve_src(src, self.folder());
             let mtime = std::fs::metadata(&path).ok().and_then(|m| m.modified().ok());
             if linked.get(src).is_some_and(|(t, _)| *t == mtime) {
                 continue;
             }
             // The file itself, else the snapshot this package carries.
-            let snapshot = || self.assets.get(&format!("{}{src}", graphing_package::LINKED_PREFIX)).and_then(|b| graphing_export::ref_from_text(&String::from_utf8_lossy(b), src));
+            let snapshot = || self.assets.get(&graphing_package::linked_name(src)).and_then(|b| graphing_export::ref_from_text(&String::from_utf8_lossy(b), src));
             let loaded = mtime.and_then(|_| graphing_export::load_ref(&path)).or_else(snapshot).map(Rc::new);
             linked.insert(src.clone(), (mtime, loaded));
         }
     }
 
+    /// Decode pictures the scene shows that are not cached yet.
     fn decode_images(&self, scene: &Scene, cx: &gpui_kit::App) {
         let mut cache = self.images.borrow_mut();
         for n in &scene.nodes {
@@ -1453,10 +1443,7 @@ impl DiagramView {
         let mut ids = Vec::new();
         for (i, img) in images.into_iter().enumerate() {
             let src = match (&img.path, embed) {
-                (Some(p), false) => {
-                    let dir = self.path.as_ref().and_then(|d| d.parent());
-                    dir.and_then(|d| p.strip_prefix(d).ok()).unwrap_or(p).to_string_lossy().replace('\\', "/")
-                }
+                (Some(p), false) => graphing_export::src_for(p, self.folder()),
                 _ => self.add_asset(&img.name, img.bytes.clone()),
             };
             // Natural size, scaled down to fit a sensible box.
@@ -1863,7 +1850,7 @@ impl Render for DiagramView {
                         cx.stop_propagation();
                         let at = v.to_world(window.mouse_position());
                         // Diagrams: open, insert or link (the workspace asks).
-                        let diagrams: Vec<PathBuf> = paths.paths().iter().filter(|p| is_diagram_file(p)).cloned().collect();
+                        let diagrams: Vec<PathBuf> = paths.paths().iter().filter(|p| crate::files::is_openable(p)).cloned().collect();
                         if !diagrams.is_empty() {
                             cx.emit(ViewEvent::DiagramsDropped(diagrams, at));
                         }

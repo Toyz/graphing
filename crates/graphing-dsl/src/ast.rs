@@ -98,6 +98,8 @@ pub enum LayoutTarget {
 #[derive(Debug, Clone)]
 pub struct LayoutEntry {
     pub target: LayoutTarget,
+    /// The target as written: `a`, `a -> b` or `"a->b#2"`.
+    pub target_span: Span,
     /// Whole entry, first token to last.
     pub span: Span,
     /// `x y [WxH]` tokens, if present.
@@ -127,7 +129,15 @@ pub struct StepDecl {
     /// `ease snappy`
     pub ease: Option<Spanned<String>>,
     /// `move a 300 120`
-    pub moves: Vec<(Spanned<String>, (f64, f64))>,
+    pub moves: Vec<MoveDecl>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MoveDecl {
+    pub target: Spanned<String>,
+    pub to: (f64, f64),
+    /// `move` through the last number.
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

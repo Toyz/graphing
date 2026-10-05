@@ -41,7 +41,7 @@ cargo test --workspace -q
 - **The `.gph` text is the source of truth.**
   - Every edit is a `graphing_model::Op`, applied through `Document::apply`. That splices the text and reparses, so the rest of the file stays as written.
   - Never regenerate a whole file; comments and formatting must survive edits.
-- **Every new `Op` or text edit path gets a round-trip test** in `crates/graphing-dsl/src/tests.rs`. The `check` helper applies the op to the text and to the model, compares them, then checks that the inverse restores the original.
+- **Every new `Op` or text edit path gets a round-trip test** in `crates/graphing-dsl/src/tests/`. The `check` helper applies the op to the text and to the model, compares them, then checks that the inverse restores the original. Add the op to the generator in `tests/fuzz.rs` too: it writes diagrams in every brace and comment style and runs random edits through `check`. `GRAPHING_FUZZ=20000 cargo test --release -p graphing-dsl fuzz` runs a deep pass.
 - **Geometry lives only in the `layout { }` block** of a file.
 - **Nothing below `graphing-app` depends on gpui.** The model, language, scene, exporters and importers stay free of UI code so other programs can embed them.
 - **Shapes come from packs, not Rust.**

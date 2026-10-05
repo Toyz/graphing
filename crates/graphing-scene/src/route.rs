@@ -41,10 +41,6 @@ fn inside(r: &Rect, p: Point) -> bool {
     p.x > r.origin.x + 1e-6 && p.x < r.origin.x + r.size.w - 1e-6 && p.y > r.origin.y + 1e-6 && p.y < r.origin.y + r.size.h - 1e-6
 }
 
-fn grow(r: Rect, by: f64) -> Rect {
-    Rect::new(r.origin.x - by, r.origin.y - by, r.size.w + by * 2.0, r.size.h + by * 2.0)
-}
-
 /// A side's stub: where a line leaves or enters it, and the outward heading.
 fn stubs(r: Rect) -> [(Point, Point, usize); 4] {
     let c = r.center();
@@ -79,9 +75,9 @@ impl Grid {
     pub fn new(shapes: &[(String, Rect)]) -> Self {
         let mut xs = Vec::new();
         let mut ys = Vec::new();
-        let blocks: Vec<Rect> = shapes.iter().map(|(_, r)| grow(*r, MARGIN)).collect();
+        let blocks: Vec<Rect> = shapes.iter().map(|(_, r)| r.inflate(MARGIN)).collect();
         for (_, r) in shapes {
-            let g = grow(*r, MARGIN);
+            let g = r.inflate(MARGIN);
             xs.extend([g.origin.x, g.origin.x + g.size.w, r.center().x]);
             ys.extend([g.origin.y, g.origin.y + g.size.h, r.center().y]);
         }

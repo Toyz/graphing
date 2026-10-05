@@ -15,11 +15,7 @@ pub fn fresh_id(d: &Diagram, prefix: &str) -> String {
 
 /// Key lowering would give the next unnamed `from -> to` edge.
 pub fn edge_key(d: &Diagram, from: &str, to: &str) -> String {
-    let base = format!("{from}->{to}");
-    if d.edge(&base).is_none() {
-        return base;
-    }
-    (2..).map(|n| format!("{base}#{n}")).find(|k| d.edge(k).is_none()).expect("unbounded")
+    graphing_model::edge_key(from, to, |k| d.edge(k).is_some())
 }
 
 pub fn add_node(d: &Diagram, stencil: Option<&str>, at: Point) -> (String, Op) {

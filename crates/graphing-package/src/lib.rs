@@ -53,6 +53,8 @@ pub enum Error {
     Decode(String, String),
     #[error("package has no document")]
     NoDocument,
+    #[error("diagram text is not UTF-8")]
+    NotText,
 }
 
 /// A diagram with its assets.
@@ -85,7 +87,7 @@ impl Package {
 
     /// The snapshot kept of the diagram a link's `src` names.
     pub fn linked(&self, src: &str) -> Option<&[u8]> {
-        self.assets.get(&format!("{LINKED_PREFIX}{src}")).map(Vec::as_slice)
+        self.assets.get(&linked_name(src)).map(Vec::as_slice)
     }
 
     /// Drop assets the text does not mention, and snapshots of diagrams no
@@ -114,6 +116,21 @@ pub fn asset_name(original: &str, bytes: &[u8]) -> String {
         Some(e) => format!("{stem}-{}.{e}", &hash[..8]),
         None => format!("{stem}-{}", &hash[..8]),
     }
+}
+
+/// The asset name of the snapshot of the diagram a link's `src` names.
+pub fn linked_name(src: &str) -> String {
+    format!("{LINKED_PREFIX}{src}")
+}
+
+/// A `.gph` or `.gphz` file's bytes: a package as it is, plain text as a
+/// package with no assets. Line endings come back as `\n`.
+pub fn open(bytes: Vec<u8>) -> Result<Package, Error> {
+    let mut pkg = if is_package(&bytes) { read(&bytes)? } else { Package { doc: String::from_utf8(bytes).map_err(|_| Error::NotText)?, ..Default::default() } };
+    if pkg.doc.contains('\r') {
+        pkg.doc = pkg.doc.replace("\r\n", "\n");
+    }
+    Ok(pkg)
 }
 
 /// Whether `bytes` start like a package.

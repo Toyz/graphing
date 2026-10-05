@@ -665,7 +665,7 @@ fn node(f: &Frame, n: &NodeBox, window: &mut Window, cx: &mut App) {
     {
         picture(f, n, src, b, window, cx);
     }
-    overlays(f, n, b, ink, stroke, window, cx);
+    overlays(f, n, ink, stroke, window, cx);
     if f.is_selected(&n.id) && f.editing != Some(n.id.as_str()) {
         let pad = px(4.0);
         let sel = Bounds {
@@ -1132,7 +1132,7 @@ fn link(f: &Frame, n: &NodeBox, src: &str, window: &mut Window, cx: &mut App) {
             t.paint(point(ab.origin.x + (ab.size.width - t.width) / 2.0, ab.origin.y + (ab.size.height - px(size_px * 1.3)) / 2.0), px(size_px * 1.3), TextAlign::Left, None, window, cx).ok();
         }
     }
-    overlays(f, n, b, ink, stroke, window, cx);
+    overlays(f, n, ink, stroke, window, cx);
     if f.is_selected(&n.id) {
         let pad = px(4.0);
         let sel = Bounds { origin: point(b.origin.x - pad, b.origin.y - pad), size: size(b.size.width + pad * 2.0, b.size.height + pad * 2.0) };
@@ -1192,7 +1192,7 @@ fn wave(f: &Frame, n: &NodeBox, w: &graphing_scene::wave::Wave, window: &mut Win
 }
 
 /// A pack's strokes and marks over the outline, and its icon.
-fn overlays(f: &Frame, n: &NodeBox, b: Bounds<Pixels>, ink: Hsla, stroke: Hsla, window: &mut Window, cx: &mut App) {
+fn overlays(f: &Frame, n: &NodeBox, ink: Hsla, stroke: Hsla, window: &mut Window, cx: &mut App) {
     let line = px(if f.scene.technical { 1.0 } else { 1.25 });
     if let Some(cmds) = &n.detail
         && let Ok(path) = custom_path(cmds, f.view, PathBuilder::stroke(line)).build()
@@ -1204,31 +1204,8 @@ fn overlays(f: &Frame, n: &NodeBox, b: Bounds<Pixels>, ink: Hsla, stroke: Hsla, 
     {
         window.paint_path(path, stroke);
     }
-    if let Some(g) = &n.glyph {
-        let shares_box = !n.label_below && !n.label.is_empty();
-        let at = glyph_bounds(g, b, f.view.zoom, shares_box);
-        window.paint_svg(at, graphing_ui::kit::icon_path(&g.icon), None, gpui_kit::TransformationMatrix::unit(), ink, cx).ok();
-    }
-}
-
-/// Where a stencil's icon goes in `b` (screen space).
-/// A centred icon whose box also holds the label keeps to the top 60%.
-fn glyph_bounds(g: &graphing_scene::stencils::Glyph, b: Bounds<Pixels>, zoom: f32, shares_box: bool) -> Bounds<Pixels> {
-    use graphing_scene::stencils::GlyphAt;
-    let corner = px(14.0 * zoom);
-    let inset = px(7.0 * zoom);
-    match g.at {
-        GlyphAt::Center => {
-            let area = if shares_box { b.size.height * 0.6 } else { b.size.height };
-            let s = b.size.width.min(area) * g.size.unwrap_or(0.45) as f32;
-            Bounds { origin: point(b.origin.x + (b.size.width - s) / 2.0, b.origin.y + (area - s) / 2.0), size: size(s, s) }
-        }
-        GlyphAt::TopLeft => Bounds { origin: point(b.origin.x + inset, b.origin.y + inset), size: size(corner, corner) },
-        GlyphAt::TopRight => Bounds { origin: point(b.origin.x + b.size.width - inset - corner, b.origin.y + inset), size: size(corner, corner) },
-        GlyphAt::Left => {
-            let s = b.size.height * g.size.unwrap_or(0.45) as f32;
-            Bounds { origin: point(b.origin.x + (b.size.height - s) / 2.0, b.origin.y + (b.size.height - s) / 2.0), size: size(s, s) }
-        }
+    if let Some((g, at)) = n.glyph_at() {
+        window.paint_svg(f.view.rect(at), graphing_ui::kit::icon_path(&g.icon), None, gpui_kit::TransformationMatrix::unit(), ink, cx).ok();
     }
 }
 
@@ -1253,11 +1230,16 @@ pub fn preview(shape: Shape, b: Bounds<Pixels>, fill: Hsla, stroke: Hsla, window
     }
 }
 
-/// Glyph for a pack's custom outline, fitted into `b`.
+/// `b` as a diagram rect, and the view that maps it back to `b`, so tile
+/// previews draw with the canvas code.
+fn tile_space(b: Bounds<Pixels>) -> (Rect, View) {
+    let r = Rect::new(f32::from(b.origin.x) as f64, f32::from(b.origin.y) as f64, f32::from(b.size.width) as f64, f32::from(b.size.height) as f64);
+    (r, View { origin: point(px(0.), px(0.)), offset: point(0.0, 0.0), zoom: 1.0 })
+}
+
 /// A stencil's details, marks and icon over its preview in `b`.
 pub fn preview_overlays(def: &graphing_scene::stencils::StencilDef, b: Bounds<Pixels>, stroke: Hsla, window: &mut Window, cx: &mut App) {
-    let r = Rect::new(f32::from(b.origin.x) as f64, f32::from(b.origin.y) as f64, f32::from(b.size.width) as f64, f32::from(b.size.height) as f64);
-    let view = View { origin: point(px(0.), px(0.)), offset: point(0.0, 0.0), zoom: 1.0 };
+    let (r, view) = tile_space(b);
     if let Some(o) = &def.detail
         && let Ok(path) = custom_path(&o.fit(r), view, PathBuilder::stroke(px(1.0))).build()
     {
@@ -1270,17 +1252,17 @@ pub fn preview_overlays(def: &graphing_scene::stencils::StencilDef, b: Bounds<Pi
     }
     if let Some(g) = &def.glyph {
         // Tiles are small: corner icons shrink, centred ones fill more.
-        let zoom = f32::from(b.size.height) / 56.0;
+        let zoom = f32::from(b.size.height) as f64 / 56.0;
         let g = graphing_scene::stencils::Glyph { size: Some(g.size.unwrap_or(0.45).max(0.6)), ..g.clone() };
-        let at = glyph_bounds(&g, b, zoom, false);
+        let at = view.rect(g.rect(r, false, zoom));
         window.paint_svg(at, graphing_ui::kit::icon_path(&g.icon), None, gpui_kit::TransformationMatrix::unit(), stroke, cx).ok();
     }
 }
 
+/// A pack's custom outline, fitted into `b`.
 pub fn preview_path(o: &graphing_scene::path::Outline, b: Bounds<Pixels>, fill: Hsla, stroke: Hsla, window: &mut Window) {
-    let r = Rect::new(f32::from(b.origin.x) as f64, f32::from(b.origin.y) as f64, f32::from(b.size.width) as f64, f32::from(b.size.height) as f64);
+    let (r, view) = tile_space(b);
     let cmds = o.fit(r);
-    let view = View { origin: point(px(0.), px(0.)), offset: point(0.0, 0.0), zoom: 1.0 };
     if let Ok(path) = custom_path(&cmds, view, PathBuilder::fill()).build() {
         window.paint_path(path, fill);
     }

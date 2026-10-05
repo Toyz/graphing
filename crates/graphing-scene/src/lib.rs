@@ -128,6 +128,12 @@ pub struct NodeBox {
 }
 
 impl NodeBox {
+    /// The shape's icon and where it goes.
+    pub fn glyph_at(&self) -> Option<(&stencils::Glyph, Rect)> {
+        let g = self.glyph.as_ref()?;
+        Some((g, g.rect(self.rect, !self.label_below && !self.label.is_empty(), 1.0)))
+    }
+
     /// The node's box plus a label drawn under it.
     pub fn footprint(&self) -> Rect {
         if !self.label_below || self.label.is_empty() {
@@ -471,7 +477,7 @@ impl Scene {
     pub fn content_bounds(&self) -> Option<Rect> {
         // A label under its shape counts as part of it.
         let rects = self.nodes.iter().map(|n| n.footprint()).chain(self.groups.iter().map(|g| g.rect));
-        rects.reduce(union)
+        rects.reduce(|a, b| a.union(b))
     }
 }
 
@@ -514,14 +520,6 @@ pub fn seg_dist(p: Point, a: Point, b: Point) -> f64 {
     let t = if len2 == 0.0 { 0.0 } else { (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0) };
     let (qx, qy) = (a.x + t * dx, a.y + t * dy);
     ((p.x - qx).powi(2) + (p.y - qy).powi(2)).sqrt()
-}
-
-pub fn union(a: Rect, b: Rect) -> Rect {
-    let x0 = a.origin.x.min(b.origin.x);
-    let y0 = a.origin.y.min(b.origin.y);
-    let x1 = (a.origin.x + a.size.w).max(b.origin.x + b.size.w);
-    let y1 = (a.origin.y + a.size.h).max(b.origin.y + b.size.h);
-    Rect::new(x0, y0, x1 - x0, y1 - y0)
 }
 
 /// Default box size for a label when the file gives none.
@@ -618,7 +616,7 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
             // Members' labels drawn under them stay inside the frame.
             let footprint = |m: &String| scene.nodes.iter().find(|n| &n.id == m).map(NodeBox::footprint);
             let rects = g.members.iter().filter_map(|m| done.get(m).copied().or_else(|| footprint(m)).or_else(|| scene.rect_of(m)));
-            let r = rects.reduce(union).map_or(Rect::new(0.0, 0.0, 200.0, 120.0), |r| {
+            let r = rects.reduce(|a, b| a.union(b)).map_or(Rect::new(0.0, 0.0, 200.0, 120.0), |r| {
                 Rect::new(
                     r.origin.x - GROUP_PAD,
                     r.origin.y - GROUP_PAD - head,
@@ -1227,7 +1225,7 @@ mod tests {
         assert_eq!(hits, ["a->b"]);
         // Around the group: the group and its node; the edge leaves it.
         let g = s.groups[0].rect;
-        let mut hits = s.marquee(Rect::new(g.origin.x - 5.0, g.origin.y - 5.0, g.size.w + 10.0, g.size.h + 10.0));
+        let mut hits = s.marquee(g.inflate(5.0));
         hits.sort();
         assert_eq!(hits, ["a", "g"]);
         // Around everything: the edge too.

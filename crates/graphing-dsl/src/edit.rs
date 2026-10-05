@@ -30,10 +30,48 @@ impl Document {
             Op::RemoveNode { id } => self.remove_node(id),
             Op::RemoveEdge { id } => self.remove_edge(id),
             Op::RemoveGroup { id } => self.remove_group(id),
+            Op::SetMembers { group, members } => self.set_members(group, members),
+            Op::AddEdge { edge, index } => {
+                // Unnamed siblings from here on move up a key; their layout
+                // entries follow them.
+                if graphing_model::is_auto_key(edge) {
+                    let siblings = self.siblings(&edge.from, &edge.to);
+                    let at = siblings.iter().filter(|&&i| i < *index).count();
+                    let renames: Vec<(usize, usize)> = (at..siblings.len()).map(|k| (k, k + 1)).collect();
+                    self.rekey_entries(&edge.from, &edge.to, &renames);
+                }
+                // Landing between two hops of one chain: break it there.
+                let hops = |i: usize| self.diagram.edges.get(i).and_then(|e| self.index.edges.get(&e.id)).copied();
+                if *index > 0
+                    && let (Some((a, _)), Some((b, hop))) = (hops(index - 1), hops(*index))
+                    && a == b
+                {
+                    let s = self.split_chain_at(a, hop);
+                    self.commit(vec![s]);
+                }
+                let s = self.add_edge(edge, *index);
+                self.commit(vec![s]);
+            }
             _ => {
+                // A chain's hops share one label and props block, so a hop
+                // whose own changes moves to a line of its own first.
+                if let Op::SetLabel { id, .. } | Op::SetProp { id, .. } = op {
+                    self.detach_hop(id);
+                }
                 let splices = self.splices(op);
                 self.commit(splices);
             }
+        }
+    }
+
+    /// Give edge `id` a statement of its own if it is one hop of a chain.
+    fn detach_hop(&mut self, id: &str) {
+        let Some(&(si, hop)) = self.index.edges.get(id) else { return };
+        let StmtKind::Edge(e) = &self.file.stmts[si].kind else { return };
+        if e.arrows.len() > 1 {
+            let ends = (e.chain[hop].value.clone(), e.chain[hop + 1].value.clone());
+            let s = self.split_chain(si, hop, Some(ends));
+            self.commit(vec![s]);
         }
     }
 
@@ -51,7 +89,6 @@ impl Document {
     fn splices(&self, op: &Op) -> Vec<Splice> {
         match op {
             Op::AddNode { node, index } => vec![self.add_node(node, *index)],
-            Op::AddEdge { edge, index } => vec![self.add_edge(edge, *index)],
             Op::SetLabel { id, label } => self.set_label(id, label.as_deref()),
             Op::SetStencil { id, stencil } => self.set_stencil(id, stencil.as_deref()),
             Op::SetArrow { id, arrow } => self.set_arrow(id, *arrow),
@@ -61,12 +98,13 @@ impl Document {
             Op::AddStep { index, step } => vec![self.add_step(*index, step)],
             Op::RemoveStep { index } => self.remove_step(*index),
             Op::SetStep { index, step } => self.set_step(*index, step),
-            Op::SetMembers { group, members } => self.set_members(group, members),
             Op::SetTitle { title } => self.set_title(title.as_deref()),
             Op::SetDiagramProp { key, value } => self.set_diagram_prop(key, value.as_ref()),
             Op::SetEdgePorts { id, from_port, to_port } => self.set_edge_ports(id, from_port.as_deref(), to_port.as_deref()),
             Op::AddGroup { group, index } => vec![self.add_group(group, *index)],
-            Op::RemoveNode { .. } | Op::RemoveEdge { .. } | Op::RemoveGroup { .. } | Op::Batch(_) => unreachable!("handled in patch"),
+            Op::RemoveNode { .. } | Op::RemoveEdge { .. } | Op::RemoveGroup { .. } | Op::SetMembers { .. } | Op::AddEdge { .. } | Op::Batch(_) => {
+                unreachable!("handled in patch")
+            }
         }
     }
 
@@ -93,6 +131,73 @@ impl Document {
     fn eat_space_before(&self, range: Range<usize>) -> Range<usize> {
         let trimmed = self.src[..range.start].trim_end_matches([' ', '\t']).len();
         trimmed..range.end
+    }
+
+    /// Remove one item of a list (a prop entry, a group member) with its
+    /// separator: its whole line when it is alone there, else just it and
+    /// the comma or spaces next to it. Comments stay.
+    fn remove_item(&self, span: Range<usize>) -> Splice {
+        let line = self.line_range(&span);
+        let after = &self.src[span.end..];
+        let gap = after.len() - after.trim_start_matches([' ', '\t']).len();
+        let comma = after[gap..].starts_with(',');
+        let mut end = if comma { span.end + gap + 1 } else { span.end };
+        let before = &self.src[line.start..span.start];
+        if before.trim().is_empty() && self.src[end..line.end].trim().is_empty() {
+            return put(line, "");
+        }
+        if comma {
+            let rest = &self.src[end..];
+            end += rest.len() - rest.trim_start_matches([' ', '\t']).len();
+            return put(span.start..end, "");
+        }
+        let trimmed = self.src[..span.start].trim_end_matches([' ', '\t']);
+        let start = if trimmed.ends_with(',') {
+            trimmed.len() - 1
+        } else if before.trim().is_empty() {
+            span.start
+        } else {
+            trimmed.len()
+        };
+        put(start..span.end, "")
+    }
+
+    /// Add `item` after `last`, the final item of a list inside `block`
+    /// (braces included): on a line of its own in a spread-out list, after
+    /// `last`'s line so a comment there stays with it; else after `last`
+    /// with `inline_sep`.
+    fn append_item(&self, block: &Range<usize>, last: &Range<usize>, item: &str, inline_sep: &str) -> Splice {
+        if self.src[block.clone()].contains('\n') {
+            let indent = self.indent_at(last.start).to_string();
+            let end = self.line_end(last.end);
+            if !self.src[last.end..end].contains('}') && self.src[..end].ends_with('\n') {
+                return ins(end, format!("{indent}{item}\n"));
+            }
+            return ins(last.end, format!("\n{indent}{item}"));
+        }
+        ins(last.end, format!("{inline_sep}{item}"))
+    }
+
+    /// Add `item` just before the list item at `next`: on a line of its own
+    /// when `next` starts its line, else inline with `inline_sep`.
+    fn insert_item_before(&self, next: &Range<usize>, item: &str, inline_sep: &str) -> Splice {
+        let line = self.line_range(next);
+        if self.src[line.start..next.start].trim().is_empty() && line.start > 0 && self.src[..line.start].trim_end_matches([' ', '\t']).ends_with('\n') {
+            let indent = self.indent_at(next.start).to_string();
+            return ins(line.start, format!("{indent}{item}\n"));
+        }
+        ins(next.start, format!("{item}{inline_sep}"))
+    }
+
+    /// Add the first item to an empty list `block` (braces included).
+    fn first_item(&self, block: &Range<usize>, item: &str) -> Splice {
+        let close = block.end - 1;
+        let close_line = self.line_range(&(close..close)).start;
+        if self.src[block.clone()].contains('\n') && self.src[close_line..close].trim().is_empty() {
+            let indent = format!("{}  ", self.indent_at(block.start));
+            return ins(close_line, format!("{indent}{item}\n"));
+        }
+        put(block.clone(), format!("{{ {item} }}"))
     }
 
     /// Insert a full statement line after statement `after`, or at the end.
@@ -305,16 +410,8 @@ impl Document {
             (None, Some(v)) => {
                 let entry = format!("{key}: {}", fmt_value(v));
                 match block.entries.last() {
-                    None => vec![put(block.span.clone(), format!("{{ {entry} }}"))],
-                    Some(last) => {
-                        let multiline = self.src[block.span.clone()].contains('\n');
-                        let sep = if multiline {
-                            format!("\n{}", self.indent_at(last.key.span.start))
-                        } else {
-                            ", ".to_string()
-                        };
-                        vec![ins(last.value.span.end, format!("{sep}{entry}"))]
-                    }
+                    None => vec![self.first_item(&block.span, &entry)],
+                    Some(last) => vec![self.append_item(&block.span, &(last.key.span.start..last.value.span.end), &entry, ", ")],
                 }
             }
             (None, None) => Vec::new(),
@@ -323,14 +420,13 @@ impl Document {
 
     fn remove_prop(&self, block: &PropBlock, i: usize) -> Splice {
         let e = &block.entries[i];
-        if block.entries.len() == 1 {
+        let span = e.key.span.start..e.value.span.end;
+        // The last entry takes the block with it, unless a comment lives there.
+        let rest = format!("{}{}", &self.src[block.span.start..span.start], &self.src[span.end..block.span.end]);
+        if block.entries.len() == 1 && !rest.contains('#') && !rest.contains("//") {
             return put(self.eat_space_before(block.span.clone()), "");
         }
-        if i > 0 {
-            // From the end of the previous value, so its separator goes too.
-            return put(block.entries[i - 1].value.span.end..e.value.span.end, "");
-        }
-        put(e.key.span.start..block.entries[1].key.span.start, "")
+        self.remove_item(span)
     }
 
     // ---- layout ----
@@ -456,8 +552,8 @@ impl Document {
                 let target = if id == format!("{}->{}", edge.from, edge.to) {
                     format!("{} -> {}", edge.from, edge.to)
                 } else if id.contains("->") {
-                    // Parallel unnamed edge: no way to address it yet.
-                    return Vec::new();
+                    // A parallel unnamed edge goes by its key.
+                    fmt_str(id)
                 } else {
                     id.to_string()
                 };
@@ -506,10 +602,10 @@ impl Document {
         let (Some(&(si, hop)), Some(edge)) = (self.index.edges.get(id), self.diagram.edge(id)) else { return Vec::new() };
         let StmtKind::Edge(e) = &self.file.stmts[si].kind else { return Vec::new() };
         let end = |node: &str, port: Option<&str>| port.map_or(node.to_string(), |p| format!("{node}.{p}"));
-        // A chain shares middle endpoints between hops; only single-hop
-        // statements can change ports without touching another edge.
+        // A chain shares middle endpoints between hops, so the hop moves to a
+        // line of its own with its new ends.
         if e.arrows.len() != 1 {
-            return Vec::new();
+            return vec![self.split_chain(si, hop, Some((end(&edge.from, from_port), end(&edge.to, to_port))))];
         }
         vec![put(e.chain[hop].span.clone(), end(&edge.from, from_port)), put(e.chain[hop + 1].span.clone(), end(&edge.to, to_port))]
     }
@@ -543,8 +639,7 @@ impl Document {
             .map(|g| (g.id.clone(), g.members.iter().filter(|m| *m != id).cloned().collect()))
             .collect();
         for (g, members) in parents {
-            let s = self.set_members(&g, &members);
-            self.commit(s);
+            self.set_members(&g, &members);
         }
         if let Some(e) = self.entry(id) {
             let r = self.line_range(&e.span);
@@ -554,18 +649,84 @@ impl Document {
             let r = self.line_range(&self.file.stmts[si].span);
             self.commit(vec![put(r, "")]);
         }
+        self.forget_in_steps(id);
     }
 
-    fn set_members(&self, group: &str, members: &[String]) -> Vec<Splice> {
-        let Some(&si) = self.index.groups.get(group) else { return Vec::new() };
-        let StmtKind::Group(g) = &self.file.stmts[si].kind else { return Vec::new() };
-        let body = if members.is_empty() { "{}".to_string() } else { format!("{{ {} }}", members.join(" ")) };
-        vec![put(g.body.clone(), body)]
+    fn group_decl(&self, id: &str) -> Option<&crate::ast::GroupDecl> {
+        match &self.file.stmts[*self.index.groups.get(id)?].kind {
+            StmtKind::Group(g) => Some(g),
+            _ => None,
+        }
+    }
+
+    /// Change a group's members in place: the body keeps its layout and
+    /// comments. Members that stay keep their tokens; a reorder renames
+    /// tokens where they stand.
+    fn set_members(&mut self, group: &str, members: &[String]) {
+        let Some(g) = self.group_decl(group) else { return };
+        let current: Vec<String> = g.members.iter().map(|m| m.value.clone()).collect();
+        let kept: Vec<&String> = current.iter().filter(|m| members.contains(m)).collect();
+        let order: Vec<&String> = members.iter().filter(|m| current.contains(m)).collect();
+        // A reorder renames tokens where they stand; what is left over past
+        // the new count goes. Otherwise drop the members no longer listed.
+        let reorder = kept != order;
+        if reorder {
+            let renames: Vec<Splice> = g.members.iter().zip(members).filter(|(t, m)| t.value != **m).map(|(t, m)| put(t.span.clone(), m.clone())).collect();
+            self.commit(renames);
+        }
+        loop {
+            let Some(g) = self.group_decl(group) else { return };
+            let gone = g.members.iter().enumerate().rev().find(|(i, t)| if reorder { *i >= members.len() } else { !members.contains(&t.value) });
+            let Some((_, t)) = gone else { break };
+            let s = self.remove_item(t.span.clone());
+            self.commit(vec![s]);
+        }
+        // Add the new ones where they belong: before the next listed member
+        // already there, else at the end.
+        for (i, m) in members.iter().enumerate() {
+            let Some(g) = self.group_decl(group) else { return };
+            if g.members.iter().any(|t| &t.value == m) {
+                continue;
+            }
+            let sep = if self.src[g.body.clone()].contains(',') { ", " } else { " " };
+            let next = members[i + 1..].iter().find_map(|n| g.members.iter().find(|t| &t.value == n));
+            let s = match (next, g.members.last()) {
+                (Some(next), _) => self.insert_item_before(&next.span, m, sep),
+                (None, Some(last)) => self.append_item(&g.body, &last.span, m, sep),
+                (None, None) => self.first_item(&g.body, m),
+            };
+            self.commit(vec![s]);
+        }
     }
 
     // ---- removal ----
 
     fn remove_edge(&mut self, id: &str) {
+        self.remove_edge_stmt(id);
+        self.forget_in_steps(id);
+    }
+
+    /// Take `id` out of the animation: from action targets (an action left
+    /// with none goes) and moves, token by token so the rest stays as written.
+    fn forget_in_steps(&mut self, id: &str) {
+        loop {
+            let Some(block) = self.animate_block() else { return };
+            let found = block.steps.iter().find_map(|st| {
+                st.actions
+                    .iter()
+                    .find_map(|a| {
+                        let t = a.targets.iter().find(|t| t.value == id)?;
+                        Some(if a.targets.len() == 1 { a.verb.span.start..t.span.end } else { t.span.clone() })
+                    })
+                    .or_else(|| st.moves.iter().find(|m| m.target.value == id).map(|m| m.span.clone()))
+            });
+            let Some(span) = found else { return };
+            let s = self.remove_item(span);
+            self.commit(vec![s]);
+        }
+    }
+
+    fn remove_edge_stmt(&mut self, id: &str) {
         let Some(edge) = self.diagram.edge(id).cloned() else { return };
         // Keep implied endpoints alive once this reference is gone.
         self.materialize(&edge.from);
@@ -575,6 +736,14 @@ impl Document {
             let r = self.line_range(&e.span);
             self.commit(vec![put(r, "")]);
         }
+        // Unnamed siblings after it move down a key; their entries follow.
+        if graphing_model::is_auto_key(&edge) {
+            let siblings = self.siblings(&edge.from, &edge.to);
+            if let Some(at) = self.diagram.edges.iter().position(|e| e.id == id).and_then(|i| siblings.iter().position(|&s| s == i)) {
+                let renames: Vec<(usize, usize)> = (at + 1..siblings.len()).map(|k| (k, k - 1)).collect();
+                self.rekey_entries(&edge.from, &edge.to, &renames);
+            }
+        }
         let Some(&(si, hop)) = self.index.edges.get(id) else { return };
         let stmt = &self.file.stmts[si];
         let StmtKind::Edge(e) = &stmt.kind else { return };
@@ -583,28 +752,83 @@ impl Document {
             self.commit(vec![put(r, "")]);
             return;
         }
-        // Split the chain around the removed hop; each piece keeps the
-        // original label, classes and props text.
+        let s = self.split_chain(si, hop, None);
+        self.commit(vec![s]);
+    }
+
+    /// Model indexes of the unnamed `from -> to` edges, in order.
+    fn siblings(&self, from: &str, to: &str) -> Vec<usize> {
+        self.diagram.edges.iter().enumerate().filter(|(_, e)| e.from == from && e.to == to && graphing_model::is_auto_key(e)).map(|(i, _)| i).collect()
+    }
+
+    /// Point the layout entries of unnamed `from -> to` edges at new keys:
+    /// each `(n, m)` moves the `n`th sibling's entry to the `m`th key.
+    fn rekey_entries(&mut self, from: &str, to: &str, renames: &[(usize, usize)]) {
+        let target = |n: usize| if n == 0 { format!("{from} -> {to}") } else { fmt_str(&graphing_model::nth_edge_key(from, to, n)) };
+        let splices: Vec<Splice> = renames
+            .iter()
+            .filter_map(|&(n, m)| Some(put(self.entry(&graphing_model::nth_edge_key(from, to, n))?.target_span.clone(), target(m))))
+            .collect();
+        self.commit(splices);
+    }
+
+    /// Break chain statement `si` into two lines, the second from `hop` on.
+    fn split_chain_at(&self, si: usize, hop: usize) -> Splice {
+        self.chain_pieces(si, &[0..hop, hop..usize::MAX], None)
+    }
+
+    /// Rewrite chain statement `si` as the runs before and after `hop`, one
+    /// line each, with the hop between them on its own line from `ends`
+    /// (or dropped when `None`). Every piece keeps the label, classes and
+    /// props text, so the edges stay as they were.
+    fn split_chain(&self, si: usize, hop: usize, ends: Option<(String, String)>) -> Splice {
+        self.chain_pieces(si, &[0..hop, hop + 1..usize::MAX], ends.map(|e| (hop, e)))
+    }
+
+    /// Chain statement `si` as one line per run of hops (`usize::MAX` for
+    /// the end), plus one hop with new ends placed between the runs it
+    /// separates. Every piece keeps the label, classes and props text.
+    fn chain_pieces(&self, si: usize, runs: &[std::ops::Range<usize>], single: Option<(usize, (String, String))>) -> Splice {
+        let stmt = &self.file.stmts[si];
+        let StmtKind::Edge(e) = &stmt.kind else { return put(0..0, "") };
         let suffix = &self.src[e.chain.last().expect("chain").span.end..stmt.span.end];
         let indent = self.indent_at(stmt.span.start);
-        let mut lines = Vec::new();
-        for run in [0..hop, hop + 1..e.arrows.len()] {
-            if run.is_empty() {
-                continue;
-            }
-            let mut s = e.chain[run.start].value.clone();
-            for h in run {
+        let run = |r: std::ops::Range<usize>| {
+            let mut s = e.chain[r.start].value.clone();
+            for h in r {
                 s.push_str(&format!(" {} {}", fmt_arrow(e.arrows[h]), e.chain[h + 1].value));
             }
             s.push_str(suffix);
-            lines.push(s);
+            s
+        };
+        let mut lines = Vec::new();
+        for r in runs {
+            let r = r.start..r.end.min(e.arrows.len());
+            if let Some((hop, (from, to))) = &single
+                && r.start > *hop
+                && !lines.iter().any(|(at, _)| at == hop)
+            {
+                lines.push((*hop, format!("{from} {} {to}{suffix}", fmt_arrow(e.arrows[*hop]))));
+            }
+            if !r.is_empty() {
+                lines.push((r.start, run(r)));
+            }
         }
-        let text = lines.join(&format!("\n{indent}"));
-        let span = stmt.span.clone();
-        self.commit(vec![put(span, text)]);
+        if let Some((hop, (from, to))) = &single
+            && !lines.iter().any(|(at, _)| at == hop)
+        {
+            lines.push((*hop, format!("{from} {} {to}{suffix}", fmt_arrow(e.arrows[*hop]))));
+        }
+        let text: Vec<String> = lines.into_iter().map(|(_, l)| l).collect();
+        put(stmt.span.clone(), text.join(&format!("\n{indent}")))
     }
 
     fn remove_node(&mut self, id: &str) {
+        self.remove_node_stmt(id);
+        self.forget_in_steps(id);
+    }
+
+    fn remove_node_stmt(&mut self, id: &str) {
         self.materialize(id);
         let edges: Vec<String> =
             self.diagram.edges.iter().filter(|e| e.from == id || e.to == id).map(|e| e.id.clone()).collect();
@@ -620,8 +844,7 @@ impl Document {
             .map(|g| (g.id.clone(), g.members.iter().filter(|m| *m != id).cloned().collect()))
             .collect();
         for (g, members) in groups {
-            let s = self.set_members(&g, &members);
-            self.commit(s);
+            self.set_members(&g, &members);
         }
         if let Some(e) = self.entry(id) {
             let r = self.line_range(&e.span);
