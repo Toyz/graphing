@@ -1,0 +1,70 @@
+# A node graph explained step by step: values flow in over typed pins,
+# the generic Select settles on float, and the result runs the heal.
+# Play it in the app, or: graphing render node-graph.gph -o node-graph.gif
+diagram "How the heal decides" { kind: graph }
+use graph as g
+
+tick: g.event "Event Tick"
+health: g.variable "Health" { out: [value: float] }
+limit: g.variable "Threshold" { out: [value: float] }
+low: g.pure "Less Than" { in: [a: float, b: float], out: [result: bool] }
+big: g.variable "Big heal" { out: [value: float] }
+small: g.variable "Small heal" { out: [value: float] }
+pick: g.select "Pick amount"
+check: g.branch "Branch"
+heal: g.function "Apply Heal" { in: [exec, amount: float], out: [exec], required: [amount] }
+
+tick.exec -> check.exec
+health.value -> low.a
+limit.value -> low.b
+low.result -> check.condition
+low.result -> pick.pick
+big.value -> pick.a
+small.value -> pick.b
+check.true -> heal.exec
+pick.result -> heal.amount
+
+layout {
+  tick    0 0
+  health  0 160
+  limit   0 280
+  low     280 180
+  big     280 340
+  small   280 460
+  pick    560 360
+  check   560 0
+  heal    860 0
+}
+
+animate {
+  step "Every frame" 2s {
+    show tick
+    focus tick
+    highlight tick
+  }
+  step "Is health low?" 2.5s {
+    show health, limit, low
+    flow health -> low, limit -> low
+    focus health, limit, low
+    highlight low
+  }
+  step "Branch on it" 2s {
+    show check
+    flow tick -> check, low -> check
+    highlight check
+  }
+  step "Pick how much" 2.5s {
+    show big, small, pick
+    flow big -> pick, small -> pick, low -> pick
+    focus low, big, small, pick
+    highlight pick
+  }
+  step "Heal" 2.5s {
+    show heal
+    flow check -> heal, pick -> heal
+    highlight heal
+  }
+  step "The whole graph" 2s {
+    focus all
+  }
+}

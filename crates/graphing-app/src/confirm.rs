@@ -8,6 +8,7 @@ use gpui_kit::{
     AnyElement, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window, deferred, div, prelude::FluentBuilder,
 };
+use gpui_kit::component::input::InputState;
 use graphing_ui::UiExt;
 use graphing_ui::kit::{self, ButtonKind, Lucide};
 use graphing_ui::tokens::*;
@@ -57,6 +58,9 @@ pub(crate) struct Confirm {
     pub cancel: Option<SharedString>,
     /// The badge icon, when the tone's default does not fit.
     pub icon: Option<Lucide>,
+    /// A text field the buttons read (a name to save under); it has the
+    /// keyboard while the dialog is up.
+    pub input: Option<gpui_kit::Entity<InputState>>,
     pub(crate) focus: Option<FocusHandle>,
 }
 
@@ -74,6 +78,7 @@ impl Confirm {
             highlight: 0,
             cancel: None,
             icon: None,
+            input: None,
             focus: None,
         }
     }
@@ -91,6 +96,26 @@ impl Confirm {
             highlight: 0,
             cancel: None,
             icon: None,
+            input: None,
+            focus: None,
+        }
+    }
+
+    /// Ask for a line of text in `input`; `label` runs `action`, which
+    /// reads the field.
+    pub(crate) fn prompt(title: impl Into<SharedString>, message: impl Into<SharedString>, icon: Lucide, input: gpui_kit::Entity<InputState>, label: impl Into<SharedString>, action: DialogAction) -> Self {
+        Self {
+            title: title.into(),
+            message: message.into(),
+            stats: Vec::new(),
+            items: Vec::new(),
+            tone: Tone::Info,
+            buttons: vec![DialogButton { label: label.into(), primary: true, action: Some(action) }],
+            choices: Vec::new(),
+            highlight: 0,
+            cancel: None,
+            icon: Some(icon),
+            input: Some(input),
             focus: None,
         }
     }
@@ -116,6 +141,10 @@ impl Workspace {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         c.focus = Some(focus);
+        // A text field takes the keyboard; Enter and Esc still reach the dialog.
+        if let Some(input) = &c.input {
+            input.update(cx, |s, cx| s.focus(window, cx));
+        }
         self.confirm = Some(c);
         cx.notify();
     }
@@ -181,6 +210,9 @@ impl Workspace {
         let hint = if c.choices.is_empty() { "Enter to confirm, Esc to cancel" } else { "\u{2191}\u{2193} to choose, Enter to pick, Esc to cancel" };
 
         let mut extra: Vec<AnyElement> = Vec::new();
+        if let Some(input) = &c.input {
+            extra.push(kit::text_input(input).into_any_element());
+        }
         if !c.choices.is_empty() {
             extra.push(
                 div()

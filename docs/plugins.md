@@ -103,6 +103,34 @@ count or over a list prop, and a pack can declare subtypes:
             "out": [{ "name": "{item}", "type": "exec", "each": "cases" }, "default: exec"] } }
 ```
 
+A plugin can work pins out in code, from anything a node says. With the
+`pins` permission:
+
+```rune
+use graphing::pins;
+
+pub fn main() {
+    pins::provide("mixing.mixer", mixer);
+}
+
+/// `props` is the node's props; return its pins.
+pub fn mixer(props) {
+    let n = match props.get("channels") { Some(n) => n, None => 2 };
+    let ins = [];
+    for i in 0..n {
+        ins.push(`ch${i}: audio`);
+    }
+    #{ inputs: ins, outputs: [#{ name: "mix", type: "audio" }] }
+}
+```
+
+Items are `"name: type"` or `#{ name, type }`; `in` is a Rune keyword, so
+the keys are `inputs` and `outputs` (or quoted `"in"`, `"out"`). The canvas
+never waits: until the plugin answers, and wherever plugins do not run
+(the CLI), a node shows its stencil's pins. Answers are kept per shape and
+props, so a node asks again only when its props change. A node's own `in`
+or `out` list still wins.
+
 `"types": { "Pawn": "Actor", "Actor": "Object" }` at the top of a pack makes
 each type fit where its supertype is taken. See `notations.md` for how
 pins, type variables (`T`) and wiring checks behave.

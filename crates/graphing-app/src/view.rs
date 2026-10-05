@@ -414,6 +414,10 @@ impl DiagramView {
 
     /// New node of `stencil` centered on `center` (world units).
     pub fn add_shape_at(&mut self, stencil: &str, center: WPoint, window: &mut Window, cx: &mut Context<Self>) {
+        // Saved blocks are `block:<name>`.
+        if let Some(name) = stencil.strip_prefix("block:") {
+            return self.insert_block(name, center, window, cx);
+        }
         // Library "Containers" tiles are `group:<look>`.
         if let Some(kind) = stencil.strip_prefix("group:") {
             let (w, h) = (NEW_GROUP_W, NEW_GROUP_H);
@@ -855,6 +859,9 @@ impl DiagramView {
             edit.push(item("Copy", L::Copy, Box::new(Copy)));
             if nodes + groups > 0 {
                 edit.push(item("Duplicate", L::CopyPlus, Box::new(Duplicate)));
+            }
+            if nodes > 0 {
+                edit.push(item("Save as Block...", L::BookmarkPlus, Box::new(crate::SaveAsBlock)));
             }
             sections.push(edit);
             if nodes + groups >= 2 {
@@ -1658,6 +1665,21 @@ impl DiagramView {
                 self.apply(op, cx);
             }
             Err(why) => self.set_status(format!("can't wire: {why}"), cx),
+        }
+    }
+
+    /// Drop a fresh copy of saved block `name` centred on `at`; the copy
+    /// is selected.
+    pub fn insert_block(&mut self, name: &str, at: WPoint, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(block) = crate::blocks::load(name) else {
+            self.set_status(format!("no block `{name}`"), cx);
+            return;
+        };
+        if let Some((ids, op)) = crate::blocks::insert(self.doc.diagram(), &block.text, at)
+            && self.apply(op, cx)
+        {
+            self.selected = ids;
+            cx.notify();
         }
     }
 

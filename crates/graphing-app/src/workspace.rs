@@ -90,6 +90,12 @@ pub struct Workspace {
     pub(crate) settings_section: Option<crate::settings_pane::Section>,
     /// The crate expanded in Settings > Open Source, by index.
     pub(crate) oss_open: Option<usize>,
+    /// Saved blocks, for the Shapes pane.
+    pub(crate) blocks: Vec<crate::blocks::Block>,
+    /// A block tile's right-click menu: block name and where.
+    pub(crate) block_menu: Option<(String, gpui_kit::Point<gpui_kit::Pixels>)>,
+    /// The pin open in the inspector's pin editor: node, side, name.
+    pub(crate) pin_open: Option<(String, graphing_scene::pins::PinDir, String)>,
     /// The custom color picker while a color field is open.
     pub(crate) color_edit: Option<crate::color::ColorEdit>,
     /// The confirmation dialog being shown, if any.
@@ -176,6 +182,9 @@ impl Workspace {
             settings_scroll: gpui_kit::ScrollHandle::new(),
             settings_section: None,
             oss_open: None,
+            pin_open: None,
+            blocks: crate::blocks::list(),
+            block_menu: None,
             color_edit: None,
             confirm: None,
             quitting: false,
@@ -807,6 +816,7 @@ impl Workspace {
                         })),
                     },
                 ],
+                input: None,
                 focus: None,
             };
             self.ask(c, window, cx);
@@ -846,7 +856,8 @@ impl Workspace {
                 crate::confirm::DialogButton { label: "Quit without saving".into(), primary: false, action: Some(Box::new(|ws, _, cx| ws.quit_now(cx))) },
                 crate::confirm::DialogButton { label: "Save all and quit".into(), primary: true, action: Some(Box::new(|ws, window, cx| ws.save_all_then_quit(window, cx))) },
             ],
-            focus: None,
+            input: None,
+                focus: None,
         };
         self.ask(c, window, cx);
     }
@@ -960,7 +971,8 @@ impl Workspace {
             icon: None,
             tone: crate::confirm::Tone::Warning,
             buttons: vec![crate::confirm::DialogButton { label: "Reload from disk".into(), primary: true, action: Some(Box::new(move |_, _, cx| view.update(cx, |v, cx| v.reload_from_disk(cx)))) }],
-            focus: None,
+            input: None,
+                focus: None,
         };
         self.ask(c, window, cx);
     }
@@ -1223,6 +1235,7 @@ impl Workspace {
             ("File", "Export PNG...", L::Image, Box::new(ExportPng)),
             ("File", "Export SysML v2...", L::FileCode, Box::new(ExportSysml)),
             ("Edit", "Insert Image...", L::ImagePlus, Box::new(InsertImage)),
+            ("Edit", "Save Selection as Block...", L::BookmarkPlus, Box::new(SaveAsBlock)),
             ("File", "Open Settings", L::Settings, Box::new(OpenSettings)),
             ("File", "Reload Settings", L::RefreshCw, Box::new(ReloadSettings)),
             ("File", "Reload Shape Packs", L::PackageCheck, Box::new(ReloadPacks)),
@@ -1763,6 +1776,7 @@ impl Render for Workspace {
         let titlebar = self.render_titlebar(window, cx);
         let confirm = self.render_confirm(cx);
         let templates = self.render_templates(cx);
+        let block_menu = self.render_block_menu(cx);
         let body = self.dock.clone();
 
         div()
@@ -1822,6 +1836,7 @@ impl Render for Workspace {
             .on_action(cx.listener(|ws, _: &ImportFile, w, cx| ws.import(None, w, cx)))
             .on_action(cx.listener(|ws, a: &ImportAs, w, cx| ws.import(graphing_import::Format::parse(&a.format), w, cx)))
             .on_action(cx.listener(|ws, _: &InsertImage, w, cx| ws.insert_image_dialog(w, cx)))
+            .on_action(cx.listener(|ws, _: &SaveAsBlock, w, cx| ws.save_block(w, cx)))
             .on_action(cx.listener(|ws, a: &AddShape, w, cx| {
                 let stencil = a.stencil.clone();
                 ws.with_view(cx, |v, cx| v.add_shape(&stencil, w, cx));
@@ -1885,6 +1900,7 @@ impl Render for Workspace {
             })
             .when_some(confirm, |d, c| d.child(c))
             .when_some(templates, |d, t| d.child(t))
+            .children(block_menu)
             .when_some(self.palette.clone(), |d, p| {
                 // The backdrop swallows scroll and clicks; clicking it closes.
                 d.child(

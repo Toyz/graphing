@@ -605,3 +605,22 @@ fn dragging_a_shape_onto_a_pin_wires_it_in(cx: &mut TestAppContext) {
     drag(cx, from, to, MouseButton::Left);
     assert!(source(&view, cx).contains("db -> dump.source"), "{}", source(&view, cx));
 }
+
+#[gpui_kit::test]
+fn a_saved_block_drops_in_as_a_copy(cx: &mut TestAppContext) {
+    let (view, cx) = open(cx, "a\n");
+    // Saved after the harness points config at a scratch folder.
+    let name = format!("drop-test-{}", std::process::id());
+    let text = "diagram \"Pair\"\nx: graph.variable { out: [value: float] }\nsel: graph.select\nx.value -> sel.a\nlayout {\n  x 0 0\n  sel 200 0\n}\n";
+    crate::blocks::save(&name, text).unwrap();
+    view.update_in(cx, |v, window, cx| v.add_shape_at(&format!("block:{name}"), graphing_model::Point::new(500.0, 300.0), window, cx));
+    let src = source(&view, cx);
+    assert!(src.contains("x.value -> sel.a"), "{src}");
+    let selected = view.read_with(cx, |v, _| v.selected.clone());
+    assert_eq!(selected.len(), 2);
+    // Twice: fresh ids, the first copy untouched.
+    view.update_in(cx, |v, window, cx| v.add_shape_at(&format!("block:{name}"), graphing_model::Point::new(500.0, 600.0), window, cx));
+    let src = source(&view, cx);
+    assert!(src.contains("x.value -> sel.a") && src.contains("x_1.value -> sel_1.a"), "{src}");
+    crate::blocks::delete(&crate::blocks::list().iter().find(|b| b.title == "Pair").unwrap().name).unwrap();
+}

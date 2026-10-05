@@ -1839,4 +1839,36 @@ mod tests {
         let h = u32::from_be_bytes(png[20..24].try_into().unwrap());
         assert_eq!((w, h), ((120 + 48) * 2, (56 + 48) * 2));
     }
+
+    #[test]
+    fn a_node_graph_explainer_animates_along_its_pins() {
+        let src = include_str!("../../../examples/animated/node-graph.gph");
+        let doc = Document::parse(src);
+        assert!(doc.diags().is_empty(), "{:?}", doc.diags());
+        // Wired cleanly: the generic Select settles on float.
+        let wiring = pins::analyze(doc.diagram());
+        assert!(wiring.problems.is_empty(), "{:?}", wiring.problems);
+        assert_eq!(wiring.resolved.get(&("pick".into(), "result".into(), pins::PinDir::Out)).map(String::as_str), Some("float"));
+        let (scene, timeline) = animation_of(src);
+        assert_eq!(timeline.steps(), 6);
+        // Pin wires curve, and flow dots run along the curve in their step.
+        let wire = scene.edges.iter().find(|e| e.id == "pick->heal").unwrap();
+        assert!(wire.points.len() > 10, "curved");
+        let (start, len) = timeline.span(4).unwrap();
+        let mid = timeline.state(start + len / 2.0);
+        assert!(mid.flow.contains_key("pick->heal") && mid.flow.contains_key("check->heal"), "{:?}", mid.flow.keys().collect::<Vec<_>>());
+        let dots = graphing_scene::anim::flow_dots(&wire.points, mid.flow["pick->heal"], graphing_scene::anim::FLOW_GAP);
+        assert!(!dots.is_empty());
+        // Shapes appear in their step: Heal is hidden at first, shown at the end.
+        assert!(timeline.state(0.0).alpha("heal") < 0.01);
+        assert!(timeline.state(timeline.total).alpha("heal") > 0.99);
+        // It renders: animated SVG with its pins, and GIF frames.
+        let opts = SvgOptions::default();
+        let svg = to_svg_animated(&scene, &opts, &timeline);
+        assert!(svg.contains("<circle") && svg.contains("<animate"), "pins and animation");
+        let small = AnimOptions { fps: 4.0, max_width: 320, hold: 0.25, ..Default::default() };
+        let gif = to_gif(&scene, &opts, &timeline, &small).unwrap();
+        assert!(gif.starts_with(b"GIF8") && gif.len() > 10_000);
+    }
 }
+

@@ -14,6 +14,8 @@ hook per run.
 | `templates` | File > New from Template |
 | `menu:<n>` | Title bar menu `n` (0 is File); `menu:<n>/<row>` also opens the submenu at that row |
 | `select:<id>,<id>` | Selects those shapes |
+| `pin:<node>/<in|out>/<pin>` | Selects the node and opens that pin in the inspector's pin editor |
+| `save-block:<id>,<id>` | Selects those shapes and opens Save as Block |
 | `open-select:<picker>` | An inspector picker (`diagram-kind`, `shape`, `edge-kind`, `node-group`, `group-add`, `group-look`, `group-kind`, `library-notation`) |
 | `open-color:<key>@<id>` | The color picker for `fill`, `stroke` or `color` of `id` |
 | `context:<id>` | The right-click menu on `id` (`context:` alone: the empty canvas) |

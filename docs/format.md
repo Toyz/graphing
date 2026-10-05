@@ -29,6 +29,14 @@ Unnamed edges get keys from their order: `a -> b` twice is `a->b`, then
 key in quotes: `"a->b#2" via 300 40`. Adding or removing one of them keeps
 every bend with its own edge.
 
+Blocks are saved setups: select shapes, choose Save as Block (right-click
+or the palette), and they go into `<config>/blocks/<name>.gph`, plain text
+like any diagram, listed under My blocks in the Shapes pane. Clicking or
+dragging one in pastes a fresh copy, ids made unique, centred where it
+lands. The copy belongs to the diagram: editing it leaves the block as
+saved, and saving over a block changes only copies made afterwards, so a
+diagram never needs anyone's blocks folder to open.
+
 Pictures can be linked from a `.gph` by path, relative to the file:
 
 ```graphing

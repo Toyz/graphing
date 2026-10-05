@@ -5,7 +5,8 @@
 //! of the same type, a data input takes one wire, an exec output leads one
 //! way, and an acyclic diagram has no loops.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::{LazyLock, Mutex};
 
 use graphing_model::{Diagram, Node, Point, Rect, Value};
 
@@ -92,6 +93,121 @@ fn side_named(name: &str) -> Option<crate::Side> {
     })
 }
 
+/// A type as the engine knows it: through the file's short pack names
+/// (`use c4 as arch`: `arch.db` -> `c4.db`) and shape aliases (`c4.db` ->
+/// `c4.database`), so a pin can name any shape of any notation.
+pub fn canonical_type(d: &Diagram, ty: &str) -> String {
+    let ty = match ty.split_once('.') {
+        Some((head, rest)) if d.aliases.contains_key(head) => format!("{}.{rest}", d.aliases[head]),
+        _ => ty.to_string(),
+    };
+    if ty.ends_with(".*") {
+        return ty;
+    }
+    crate::stencils::registry().get(&ty).map_or(ty, |s| s.id.clone())
+}
+
+/// What a shape or group is when wired in as an item: its `type:`, else
+/// its shape (`c4.database`, `bpmn.task`) or its group kind
+/// (`c4.system-boundary`); a plain box or group is anything.
+pub fn item_type(d: &Diagram, id: &str) -> Option<String> {
+    if let Some(n) = d.node(id) {
+        if let Some(t) = d.node_prop(n, "type") {
+            return Some(canonical_type(d, &t.text()));
+        }
+        return n.stencil.as_deref().map(|s| canonical_type(d, s));
+    }
+    let g = d.group(id)?;
+    if let Some(t) = graphing_model::find_prop(&g.props, "type") {
+        return Some(canonical_type(d, &t.text()));
+    }
+    let kind = graphing_model::find_prop(&g.props, "kind")?.text();
+    let reg = crate::stencils::registry();
+    let k = reg.group_kind_in(&kind, &d.packs)?;
+    Some(format!("{}.{}", k.pack, k.name))
+}
+
+/// Pins plugins work out (`graphing::pins::provide`), by shape and props.
+/// Scenes build without waiting: a shape asked about for the first time
+/// uses its stencil's pins until the plugin answers, and the app redraws.
+#[derive(Default)]
+struct Provided {
+    /// Shapes some plugin works pins out for.
+    shapes: HashSet<String>,
+    answers: HashMap<(String, String), Answer>,
+    /// Asked for, not yet handed to a plugin.
+    queue: Vec<PinRequest>,
+}
+
+enum Answer {
+    Waiting,
+    Ready(Vec<String>, Vec<String>),
+    /// The plugin failed; the stencil's pins stand.
+    Failed,
+}
+
+/// A shape's pins to work out: its id, a key for these props, and the
+/// props.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PinRequest {
+    pub shape: String,
+    pub key: String,
+    pub props: graphing_model::Props,
+}
+
+static PROVIDED: LazyLock<Mutex<Provided>> = LazyLock::new(Default::default);
+
+fn provided_lock() -> std::sync::MutexGuard<'static, Provided> {
+    PROVIDED.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A plugin works out the pins of these shapes.
+pub fn add_providers(shapes: impl IntoIterator<Item = String>) {
+    provided_lock().shapes.extend(shapes);
+}
+
+/// Forget every provider and answer (plugins restarting).
+pub fn clear_providers() {
+    *provided_lock() = Provided::default();
+}
+
+/// Requests made since the last call, for the app to hand to plugins.
+pub fn take_requests() -> Vec<PinRequest> {
+    std::mem::take(&mut provided_lock().queue)
+}
+
+/// A plugin's answer: `in` and `out` as `name` or `name: type` items, or
+/// `None` when it failed (the stencil's pins stand).
+pub fn answer(shape: &str, key: &str, pins: Option<(Vec<String>, Vec<String>)>) {
+    let a = match pins {
+        Some((ins, outs)) => Answer::Ready(ins, outs),
+        None => Answer::Failed,
+    };
+    provided_lock().answers.insert((shape.to_string(), key.to_string()), a);
+}
+
+/// The key a node's props are asked and answered under.
+pub fn props_key(props: &graphing_model::Props) -> String {
+    format!("{props:?}")
+}
+
+fn provided(shape: &str, props: &graphing_model::Props) -> Option<(Vec<String>, Vec<String>)> {
+    let mut p = provided_lock();
+    if !p.shapes.contains(shape) {
+        return None;
+    }
+    let key = (shape.to_string(), props_key(props));
+    match p.answers.get(&key) {
+        Some(Answer::Ready(i, o)) => Some((i.clone(), o.clone())),
+        Some(_) => None,
+        None => {
+            p.answers.insert(key.clone(), Answer::Waiting);
+            p.queue.push(PinRequest { shape: key.0, key: key.1, props: props.clone() });
+            None
+        }
+    }
+}
+
 /// A type variable: one capital letter, maybe numbered (`T`, `K`, `T2`).
 /// Each node has its own; the wires decide what it is.
 pub fn is_var(ty: &str) -> bool {
@@ -134,6 +250,11 @@ pub fn pins(d: &Diagram, n: &Node) -> Vec<Pin> {
         let list_side = prop(&format!("{key}_side")).map(|v| v.text()).as_deref().and_then(side_named);
         let declared: Vec<(String, Option<String>)> = match d.node_prop(n, key).and_then(Value::as_list) {
             Some(items) => items.iter().map(split_item).collect(),
+            // A plugin's answer for this shape and these props, once it has one.
+            None if let Some((ins, outs)) = provided(&def.id, &n.props) => {
+                let list = if dir == PinDir::In { ins } else { outs };
+                list.iter().map(|t| split_item(&Value::Str(t.clone()))).collect()
+            }
             None => match &def.pins {
                 Some(t) => t.expand(if dir == PinDir::In { &t.ins } else { &t.outs }, &|k: &str| d.node_prop(n, k).cloned()),
                 None => prop(key).as_ref().and_then(Value::as_list).unwrap_or_default().iter().map(split_item).collect(),
@@ -143,6 +264,7 @@ pub fn pins(d: &Diagram, n: &Node) -> Vec<Pin> {
             if name.is_empty() {
                 continue;
             }
+            let ty = ty.map(|t| canonical_type(d, &t));
             out.push(Pin {
                 side: sides.get(&name).and_then(|s| side_named(s)).or(list_side),
                 default: defaults.get(&name).cloned(),
@@ -323,15 +445,19 @@ fn supertypes(d: &Diagram) -> HashMap<String, String> {
 }
 
 /// Whether a value of type `from` may go where `to` is wanted: the same
-/// type, a subtype, or either side loose (`any`, untyped).
+/// type, a subtype, anything of a notation (`c4.*`), or either side loose
+/// (`any`, untyped).
 fn assignable(from: &str, to: &str, up: &HashMap<String, String>) -> bool {
-    if matches!(from, "any" | "wildcard") || matches!(to, "any" | "wildcard") || from == to {
+    if matches!(from, "any" | "wildcard") || matches!(to, "any" | "wildcard") {
         return true;
     }
+    let fits = |t: &str| t == to || to.strip_suffix(".*").is_some_and(|pack| t.strip_prefix(pack).is_some_and(|rest| rest.starts_with('.')));
     let mut at = from;
     for _ in 0..64 {
+        if fits(at) {
+            return true;
+        }
         match up.get(at) {
-            Some(next) if next == to => return true,
             Some(next) => at = next,
             None => return false,
         }
@@ -418,10 +544,9 @@ pub fn analyze(d: &Diagram) -> Analysis {
     let items: HashMap<&str, [Pin; 2]> = d
         .nodes
         .iter()
-        .map(|n| {
-            let ty = d.node_prop(n, "type").map(Value::text).or_else(|| n.stencil.clone());
-            (n.id.as_str(), [Pin { ty, ..Pin::new("", None, PinDir::Out) }, Pin::new("", None, PinDir::In)])
-        })
+        .map(|n| n.id.as_str())
+        .chain(d.groups.iter().map(|g| g.id.as_str()))
+        .map(|id| (id, [Pin { ty: item_type(d, id), ..Pin::new("", None, PinDir::Out) }, Pin::new("", None, PinDir::In)]))
         .collect();
     // Where an input and an output share a name (`exec`), a wire's source
     // end means the output and its target end the input.
@@ -821,6 +946,48 @@ mod tests {
         // database; a shape's own `type:` counts; plain lines are not wires.
         assert_eq!(msgs, ["web->dump: `web` gives c4.container but `dump.who` takes c4.database"]);
         assert_eq!(a.wires.get(&("dump".into(), "source".into(), PinDir::In)), Some(&1));
+    }
+
+    #[test]
+    fn every_notation_plugs_into_pins() {
+        // Shapes from five notations and a C4 group feeding one step, by
+        // exact shape, through a short pack name, and by `pack.*`.
+        let src = "use c4, uml as u, bpmn, sysml, er, graph\n\
+            task: bpmn.task\n\
+            cls: u.class\n\
+            blk: sysml.block\n\
+            tbl: er.entity\n\
+            api: c4.container\n\
+            group sys \"Shop\" { api } { kind: system-boundary }\n\
+            step: graph.task { in: [work: bpmn.*, model: u.class, part: sysml.*, table: er.table, system: c4.system-boundary] }\n\
+            task -> step.work\ncls -> step.model\nblk -> step.part\ntbl -> step.table\nsys -> step.system\n";
+        let (_, msgs) = analysis(src);
+        assert!(msgs.is_empty(), "{msgs:?}");
+        // The wrong notation is named.
+        let (_, msgs) = analysis(&src.replace("blk -> step.part", "tbl -> step.part"));
+        assert!(msgs.iter().any(|m| m.contains("gives er.table but `step.part` takes sysml.*")), "{msgs:?}");
+    }
+
+    #[test]
+    fn plugin_pins_take_over_once_answered() {
+        crate::stencils::register(r#"{"id": "provtest", "name": "P", "stencils": [{"name": "mixer", "title": "Mixer", "pins": {"in": ["a"]}}]}"#, "test").unwrap();
+        add_providers(["provtest.mixer".to_string()]);
+        let doc = Document::parse("use provtest\nm: provtest.mixer { inputs: 2 }\nk: provtest.mixer { inputs: 5 }\n");
+        let d = doc.diagram();
+        let names = |id: &str| pins(d, d.node(id).unwrap()).into_iter().map(|p| p.name).collect::<Vec<_>>();
+        // Not answered yet: the stencil's pins, and one request per props.
+        assert_eq!(names("m"), ["a"]);
+        assert_eq!(names("m"), ["a"]);
+        let asked: Vec<PinRequest> = take_requests().into_iter().filter(|r| r.shape == "provtest.mixer").collect();
+        assert_eq!(asked.len(), 1);
+        answer("provtest.mixer", &asked[0].key, Some((vec!["x: float".into(), "y: float".into()], vec!["mix: float".into()])));
+        assert_eq!(names("m"), ["x", "y", "mix"]);
+        // Other props ask again; a failed answer leaves the stencil's pins.
+        assert_eq!(names("k"), ["a"]);
+        let asked: Vec<PinRequest> = take_requests().into_iter().filter(|r| r.shape == "provtest.mixer").collect();
+        answer("provtest.mixer", &asked[0].key, None);
+        assert_eq!(names("k"), ["a"]);
+        assert!(take_requests().iter().all(|r| r.shape != "provtest.mixer"));
     }
 }
 

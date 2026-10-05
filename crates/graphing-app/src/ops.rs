@@ -129,6 +129,184 @@ pub fn best_pin(d: &Diagram, from: PinEnd, node: &str) -> Option<(String, PinDir
     fitting.into_iter().next().map(|(_, name)| (name, want))
 }
 
+// ---- editing pins ----
+
+fn pin_key(dir: PinDir) -> &'static str {
+    if dir == PinDir::In { "in" } else { "out" }
+}
+
+fn ident_like(s: &str) -> bool {
+    !s.is_empty() && s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_') && s.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.'))
+}
+
+/// A pin as a list item: `a`, `a: float`, or quoted when the text needs it.
+fn pin_item(name: &str, ty: Option<&str>) -> Value {
+    match ty.filter(|t| !t.is_empty()) {
+        Some(t) if ident_like(name) && (ident_like(t) || t.ends_with(".*")) => Value::Pair(name.into(), Box::new(Value::Ident(t.into()))),
+        Some(t) if ident_like(name) => Value::Pair(name.into(), Box::new(Value::Str(t.into()))),
+        Some(t) => Value::Str(format!("{name}: {t}")),
+        None if ident_like(name) => Value::Ident(name.into()),
+        None => Value::Str(name.into()),
+    }
+}
+
+/// `node`'s `dir` pins as (name, type), from its own list or, when it has
+/// none, as its stencil gives them (an edit then writes them out).
+fn pin_list(d: &Diagram, node: &str, dir: PinDir) -> Option<Vec<(String, Option<String>)>> {
+    let n = d.node(node)?;
+    Some(graphing_scene::pins::pins(d, n).into_iter().filter(|p| p.dir == dir).map(|p| (p.name, p.ty)).collect())
+}
+
+fn write_pins(node: &str, dir: PinDir, list: &[(String, Option<String>)]) -> Op {
+    let items = list.iter().map(|(n, t)| pin_item(n, t.as_deref())).collect();
+    Op::SetProp { id: node.into(), key: pin_key(dir).into(), value: Some(Value::List(items)) }
+}
+
+/// Add a pin from `spec` (`name` or `name: type`), keeping names unique.
+pub fn add_pin(d: &Diagram, node: &str, dir: PinDir, spec: &str) -> Option<Op> {
+    let (name, ty) = match spec.split_once(':') {
+        Some((n, t)) => (n.trim().to_string(), Some(t.trim().to_string()).filter(|t| !t.is_empty())),
+        None => (spec.trim().to_string(), None),
+    };
+    let mut list = pin_list(d, node, dir)?;
+    if name.is_empty() || list.iter().any(|(n, _)| *n == name) {
+        return None;
+    }
+    list.push((name, ty));
+    Some(write_pins(node, dir, &list))
+}
+
+/// Change a pin's type (`None`: untyped, takes anything).
+pub fn set_pin_type(d: &Diagram, node: &str, dir: PinDir, name: &str, ty: Option<&str>) -> Option<Op> {
+    let mut list = pin_list(d, node, dir)?;
+    let slot = list.iter_mut().find(|(n, _)| n == name)?;
+    let ty = ty.map(str::trim).filter(|t| !t.is_empty()).map(str::to_string);
+    if slot.1 == ty {
+        return None;
+    }
+    slot.1 = ty;
+    Some(write_pins(node, dir, &list))
+}
+
+/// Edges ending at `node`'s pin `name` facing `dir`, and which end.
+fn pin_wires<'a>(d: &'a Diagram, node: &str, name: &str, dir: PinDir) -> Vec<(&'a Edge, bool)> {
+    d.edges
+        .iter()
+        .filter_map(|e| {
+            // The source end of a wire is an output, its target an input.
+            let from_dir = if e.arrow == Arrow::Back { PinDir::In } else { PinDir::Out };
+            let to_dir = if from_dir == PinDir::Out { PinDir::In } else { PinDir::Out };
+            if e.from == node && e.from_port.as_deref() == Some(name) && from_dir == dir {
+                Some((e, true))
+            } else if e.to == node && e.to_port.as_deref() == Some(name) && to_dir == dir {
+                Some((e, false))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// The pin detail lists (`defaults`, `docs`, `sides`, `required`, `many`)
+/// with the entry for `name` changed by `f`.
+fn detail_ops(d: &Diagram, node: &str, f: impl Fn(&str, Vec<Value>) -> Vec<Value>) -> Vec<Op> {
+    let Some(n) = d.node(node) else { return Vec::new() };
+    ["defaults", "docs", "sides", "required", "many"]
+        .into_iter()
+        .filter_map(|key| {
+            let before = n.props.iter().rev().find(|(k, _)| k == key).and_then(|(_, v)| v.as_list().map(<[Value]>::to_vec))?;
+            let after = f(key, before.clone());
+            (after != before).then(|| Op::SetProp { id: node.into(), key: key.into(), value: (!after.is_empty()).then_some(Value::List(after)) })
+        })
+        .collect()
+}
+
+fn item_name(v: &Value) -> String {
+    match v {
+        Value::Pair(n, _) => n.clone(),
+        other => other.text().split(':').next().unwrap_or_default().trim().to_string(),
+    }
+}
+
+/// Rename a pin; its wires and details follow.
+pub fn rename_pin(d: &Diagram, node: &str, dir: PinDir, old: &str, new: &str) -> Option<Op> {
+    let new = new.trim();
+    let mut list = pin_list(d, node, dir)?;
+    if new.is_empty() || new == old || list.iter().any(|(n, _)| n == new) {
+        return None;
+    }
+    list.iter_mut().find(|(n, _)| n == old)?.0 = new.to_string();
+    let mut ops = vec![write_pins(node, dir, &list)];
+    for (e, from_end) in pin_wires(d, node, old, dir) {
+        let (fp, tp) = if from_end { (Some(new.to_string()), e.to_port.clone()) } else { (e.from_port.clone(), Some(new.to_string())) };
+        ops.push(Op::SetEdgePorts { id: e.id.clone(), from_port: fp, to_port: tp });
+    }
+    ops.extend(detail_ops(d, node, |_, items| {
+        items
+            .into_iter()
+            .map(|it| match it {
+                Value::Pair(n, v) if n == old => Value::Pair(new.to_string(), v),
+                other if item_name(&other) == old => match &other {
+                    Value::Ident(_) | Value::Str(_) if !other.text().contains(':') => pin_item(new, None),
+                    _ => other,
+                },
+                other => other,
+            })
+            .collect()
+    }));
+    Some(Op::Batch(ops))
+}
+
+/// Remove a pin, the wires on it and its details.
+pub fn remove_pin(d: &Diagram, node: &str, dir: PinDir, name: &str) -> Option<Op> {
+    let mut list = pin_list(d, node, dir)?;
+    let before = list.len();
+    list.retain(|(n, _)| n != name);
+    if list.len() == before {
+        return None;
+    }
+    let mut ops: Vec<Op> = pin_wires(d, node, name, dir).into_iter().map(|(e, _)| Op::RemoveEdge { id: e.id.clone() }).collect();
+    ops.push(write_pins(node, dir, &list));
+    ops.extend(detail_ops(d, node, |_, items| items.into_iter().filter(|it| item_name(it) != name).collect()));
+    Some(Op::Batch(ops))
+}
+
+/// Set or clear a pin's `defaults`, `docs` or `sides` entry.
+pub fn set_pin_detail(d: &Diagram, node: &str, key: &str, name: &str, value: Option<&str>) -> Option<Op> {
+    let n = d.node(node)?;
+    let mut items = n.props.iter().rev().find(|(k, _)| k == key).and_then(|(_, v)| v.as_list().map(<[Value]>::to_vec)).unwrap_or_default();
+    items.retain(|it| item_name(it) != name);
+    if let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) {
+        let v = match v.parse::<f64>() {
+            Ok(n) => Value::Num(n),
+            Err(_) if ident_like(v) && key == "sides" => Value::Ident(v.into()),
+            Err(_) => Value::Str(v.into()),
+        };
+        if !ident_like(name) {
+            return None;
+        }
+        items.push(Value::Pair(name.into(), Box::new(v)));
+    }
+    let value = (!items.is_empty()).then_some(Value::List(items));
+    (d.node_prop(n, key) != value.as_ref()).then(|| Op::SetProp { id: node.into(), key: key.into(), value })
+}
+
+/// Turn a pin's `required` or `many` mark on or off.
+pub fn set_pin_flag(d: &Diagram, node: &str, key: &str, name: &str, on: bool) -> Option<Op> {
+    let n = d.node(node)?;
+    let mut items = n.props.iter().rev().find(|(k, _)| k == key).and_then(|(_, v)| v.as_list().map(<[Value]>::to_vec)).unwrap_or_default();
+    let had = items.iter().any(|it| item_name(it) == name);
+    if had == on {
+        return None;
+    }
+    if on {
+        items.push(pin_item(name, None));
+    } else {
+        items.retain(|it| item_name(it) != name);
+    }
+    Some(Op::SetProp { id: node.into(), key: key.into(), value: (!items.is_empty()).then_some(Value::List(items)) })
+}
+
 /// Every port a node has: declared in `ports` (`name : Type`) or used by a
 /// connection end. Name, type, number of connections.
 pub fn ports_of(d: &Diagram, node: &str) -> Vec<(String, Option<String>, usize)> {
@@ -849,6 +1027,45 @@ mod tests {
         assert!(doc.source().contains("db -> dump.source"), "{}", doc.source());
         assert!(wire(doc.diagram(), ("db", "", PinDir::Out), ("dump", "n", PinDir::In)).unwrap_err().contains("takes int"));
         assert_eq!(best_pin(doc.diagram(), ("db", "", PinDir::Out), "dump"), None, "source is taken, n does not fit");
+    }
+
+    #[test]
+    fn pins_are_edited_with_their_wires_and_details() {
+        let src = "use graph\nx: graph.variable { out: [value: float] }\nadd: graph.pure { in: [a: float, b: float], out: [sum: float], defaults: [b: 1], required: [a] }\nx.value -> add.a\n";
+        let mut doc = Document::parse(src);
+        let ok = |doc: &mut Document, make: &dyn Fn(&Diagram) -> Option<Op>| {
+            let op = make(doc.diagram());
+            doc.apply(&op.expect("an op")).expect("applies");
+            assert!(doc.diags().is_empty(), "{:?}\n{}", doc.diags(), doc.source());
+        };
+        // Add one, typed; names stay unique.
+        ok(&mut doc, &|d| add_pin(d, "add", PinDir::In, "c: int"));
+        assert!(add_pin(doc.diagram(), "add", PinDir::In, "c").is_none());
+        assert!(doc.source().contains("in: [a: float, b: float, c: int]"), "{}", doc.source());
+        // Rename: the wire and the details follow.
+        ok(&mut doc, &|d| rename_pin(d, "add", PinDir::In, "a", "left"));
+        let s = doc.source().to_string();
+        assert!(s.contains("x.value -> add.left") && s.contains("required: [left]") && s.contains("in: [left: float"), "{s}");
+        ok(&mut doc, &|d| rename_pin(d, "add", PinDir::In, "b", "right"));
+        assert!(doc.source().contains("defaults: [right: 1]"), "{}", doc.source());
+        // Retype, details, flags.
+        ok(&mut doc, &|d| set_pin_type(d, "add", PinDir::In, "c", Some("T")));
+        ok(&mut doc, &|d| set_pin_detail(d, "add", "docs", "c", Some("How many")));
+        ok(&mut doc, &|d| set_pin_flag(d, "add", "many", "c", true));
+        let s = doc.source().to_string();
+        assert!(s.contains("c: T") && s.contains("docs: [c: \"How many\"]") && s.contains("many: [c]"), "{s}");
+        // Remove: its wire and its details go with it.
+        ok(&mut doc, &|d| remove_pin(d, "add", PinDir::In, "left"));
+        let s = doc.source().to_string();
+        assert!(!s.contains("left") && !s.contains("x.value ->"), "{s}");
+        assert!(graphing_scene::pins::problems(doc.diagram()).is_empty());
+    }
+
+    #[test]
+    fn editing_stencil_pins_writes_them_out() {
+        let mut doc = Document::parse("use graph\ns: graph.sequence { outputs: 2 }\n");
+        doc.apply(&add_pin(doc.diagram(), "s", PinDir::Out, "done: exec").unwrap()).unwrap();
+        assert!(doc.source().contains("out: [\"then 0: exec\", \"then 1: exec\", done: exec]"), "{}", doc.source());
     }
 }
 

@@ -257,6 +257,16 @@ impl Timeline {
         self.spans.get(i).map_or(self.total, |s| s.0)
     }
 
+    /// How many steps there are.
+    pub fn steps(&self) -> usize {
+        self.spans.len()
+    }
+
+    /// Step `i`'s start and length, in seconds.
+    pub fn span(&self, i: usize) -> Option<(f64, f64)> {
+        self.spans.get(i).map(|s| (s.0, s.1))
+    }
+
     fn own_alpha(&self, id: &str, secs: f64) -> f32 {
         let mut a = if self.hidden_at_start.contains(id) { 0.0 } else { 1.0 };
         let Some(changes) = self.fades.get(id) else { return a as f32 };

@@ -22,6 +22,8 @@ struct Host {
     taken: HashSet<String>,
     edits: Vec<Edit>,
     commands: Vec<(String, String, Function)>,
+    /// Shape -> the function that works out its pins.
+    pins: Vec<(String, Function)>,
 }
 
 thread_local! {
@@ -40,7 +42,7 @@ fn send(m: FromScript) {
 
 pub(crate) fn worker(name: &str, source: &str, permissions: BTreeSet<Permission>, limits: Limits, rx: Receiver<ToScript>, tx: Sender<FromScript>) {
     HOST.with(|h| {
-        *h.borrow_mut() = Some(Host { tx: tx.clone(), snapshot: Snapshot::default(), taken: HashSet::new(), edits: Vec::new(), commands: Vec::new() })
+        *h.borrow_mut() = Some(Host { tx: tx.clone(), snapshot: Snapshot::default(), taken: HashSet::new(), edits: Vec::new(), commands: Vec::new(), pins: Vec::new() })
     });
     let vm = match compile(name, source, &permissions) {
         Ok(vm) => vm,
@@ -56,12 +58,27 @@ pub(crate) fn worker(name: &str, source: &str, permissions: BTreeSet<Permission>
         return;
     }
     let commands = with(|h| h.commands.iter().map(|(id, title, _)| CommandInfo { id: id.clone(), title: title.clone() }).collect());
-    let _ = tx.send(FromScript::Ready { commands });
+    let pin_providers = with(|h| h.pins.iter().map(|(shape, _)| shape.clone()).collect());
+    let _ = tx.send(FromScript::Ready { commands, pin_providers });
 
     let mut strikes = 0;
     while let Ok(msg) = rx.recv() {
         match msg {
             ToScript::Stop => break,
+            ToScript::Pins { shape, key, props } => {
+                // Out of the host while it runs, as with commands.
+                let providers = with(|h| std::mem::take(&mut h.pins));
+                let pins = match providers.iter().find(|(s, _)| *s == shape) {
+                    Some((_, f)) => call_with(f, props, limits).and_then(|v| pin_lists(&v)),
+                    None => Err(format!("no pins for `{shape}`")),
+                };
+                with(|h| {
+                    let added = std::mem::take(&mut h.pins);
+                    h.pins = providers;
+                    h.pins.extend(added);
+                });
+                let _ = tx.send(FromScript::Pins { shape, key, pins });
+            }
             ToScript::Run { command, snapshot } => {
                 // Out of the host while it runs: the call itself uses the host.
                 let commands = with(|h| {
@@ -120,6 +137,52 @@ fn compile(name: &str, source: &str, permissions: &BTreeSet<Permission>) -> Resu
     }
 }
 
+/// Call `f(arg)` under the limits and return what it gives back as JSON.
+fn call_with(f: &Function, arg: serde_json::Value, limits: Limits) -> Result<serde_json::Value, String> {
+    budget::with(
+        limits.instructions,
+        limit::with(limits.memory, || {
+            let arg = from_json(&arg)?;
+            let value = f.call::<RuneValue>((arg,)).into_result().map_err(|e| e.to_string())?;
+            if let Ok(Err(why)) = rune::from_value::<Result<RuneValue, RuneValue>>(value.clone()) {
+                return Err(to_json(&why).map(|j| j.as_str().map_or(j.to_string(), str::to_string)).unwrap_or_else(|e| e));
+            }
+            let value = rune::from_value::<Result<RuneValue, RuneValue>>(value.clone()).ok().and_then(Result::ok).unwrap_or(value);
+            to_json(&value)
+        }),
+    )
+    .call()
+}
+
+/// `#{ inputs: [..], outputs: [..] }` (or `"in"`, `"out"`), items
+/// `"name: type"` or `#{ name, type }`.
+fn pin_lists(v: &serde_json::Value) -> Result<(Vec<String>, Vec<String>), String> {
+    // `in` is a keyword in Rune, so `inputs`/`outputs` work as keys too.
+    let list = |key: &str| -> Result<Vec<String>, String> {
+        let long = if key == "in" { "inputs" } else { "outputs" };
+        let Some(items) = v.get(key).or_else(|| v.get(long)) else { return Ok(Vec::new()) };
+        let items = items.as_array().ok_or_else(|| format!("`{key}` should be a list"))?;
+        items
+            .iter()
+            .map(|it| match it {
+                serde_json::Value::String(s) => Ok(s.clone()),
+                serde_json::Value::Object(o) => {
+                    let name = o.get("name").and_then(|n| n.as_str()).ok_or("a pin needs a `name`")?;
+                    Ok(match o.get("type").and_then(|t| t.as_str()) {
+                        Some(t) => format!("{name}: {t}"),
+                        None => name.to_string(),
+                    })
+                }
+                _ => Err(format!("`{key}` items are \"name: type\" or #{{ name, type }}")),
+            })
+            .collect()
+    };
+    if !v.is_object() {
+        return Err("pins should be #{ inputs: [..], outputs: [..] }".into());
+    }
+    Ok((list("in")?, list("out")?))
+}
+
 /// Run a script function under the instruction budget and memory limit.
 fn call(f: &Function, limits: Limits) -> Result<(), String> {
     budget::with(
@@ -152,6 +215,11 @@ fn modules(permissions: &BTreeSet<Permission>) -> Result<Vec<Module>, ContextErr
     if permissions.contains(&Permission::Stencils) {
         let mut m = Module::with_crate_item("graphing", ["stencils"])?;
         m.function("register", stencils_register).build()?;
+        out.push(m);
+    }
+    if permissions.contains(&Permission::Pins) {
+        let mut m = Module::with_crate_item("graphing", ["pins"])?;
+        m.function("provide", |shape: &str, f: Function| with(|h| h.pins.push((shape.to_string(), f)))).build()?;
         out.push(m);
     }
     if permissions.contains(&Permission::Commands) {

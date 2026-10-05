@@ -18,6 +18,9 @@
 //! - `notify(text)` with `notify`
 //! - `stencils::register(pack)` with `stencils` (same shape as pack.json)
 //! - `commands::register(id, title, fn)` with `commands`
+//! - `pins::provide(shape, fn)` with `pins`: `fn(props)` returns
+//!   `#{ inputs: ["a: float"], outputs: ["sum: float"] }` for a node of
+//!   `shape` with those props, so pins can follow anything the node says
 //! - `doc::title() nodes() edges() selection()` with `doc.read`
 //! - `doc::add_node(spec) add_edge(spec) set_label(id, text)
 //!   set_prop(id, key, value) move_to(id, x, y) remove(id) set_selection(ids)`
@@ -48,6 +51,8 @@ pub enum Permission {
     Commands,
     #[serde(rename = "notify")]
     Notify,
+    #[serde(rename = "pins")]
+    Pins,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -131,6 +136,8 @@ fn props_json(props: &[(String, Value)]) -> serde_json::Map<String, serde_json::
 fn value_json(v: &Value) -> serde_json::Value {
     match v {
         Value::Str(s) | Value::Color(s) | Value::Ident(s) => serde_json::Value::String(s.clone()),
+        // Whole numbers go as integers, so scripts can count with them.
+        Value::Num(n) if n.fract() == 0.0 && n.abs() < 1e15 => serde_json::Value::from(*n as i64),
         Value::Num(n) => serde_json::Number::from_f64(*n).map_or(serde_json::Value::Null, serde_json::Value::Number),
         Value::List(items) => serde_json::Value::Array(items.iter().map(value_json).collect()),
         Value::Pair(..) => serde_json::Value::String(v.text()),
@@ -208,13 +215,17 @@ pub enum Level {
 
 pub enum ToScript {
     Run { command: String, snapshot: Snapshot },
+    /// Work out the pins of a `shape` node with these props.
+    Pins { shape: String, key: String, props: serde_json::Value },
     Stop,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FromScript {
-    /// Loaded; these are its commands.
-    Ready { commands: Vec<CommandInfo> },
+    /// Loaded; these are its commands and the shapes it works pins out for.
+    Ready { commands: Vec<CommandInfo>, pin_providers: Vec<String> },
+    /// Pins for `shape` under `key`: `in` and `out` items, or why not.
+    Pins { shape: String, key: String, pins: Result<(Vec<String>, Vec<String>), String> },
     Log { level: Level, text: String },
     Notify(String),
     /// A pack to register, as JSON.
@@ -239,6 +250,12 @@ pub struct Plugin {
 impl Plugin {
     pub fn run(&self, command: &str, snapshot: Snapshot) {
         let _ = self.tx.send(ToScript::Run { command: command.to_string(), snapshot });
+    }
+
+    /// Ask for the pins of a `shape` node with `props`; the answer comes
+    /// back as `FromScript::Pins` under `key`.
+    pub fn pins(&self, shape: &str, key: &str, props: &[(String, Value)]) {
+        let _ = self.tx.send(ToScript::Pins { shape: shape.to_string(), key: key.to_string(), props: serde_json::Value::Object(props_json(props)) });
     }
 
     /// Messages the script sent since the last call.

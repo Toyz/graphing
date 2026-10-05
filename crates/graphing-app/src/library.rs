@@ -266,6 +266,19 @@ impl Workspace {
 
         let any = !notations.is_empty();
         let mut out = div().flex().flex_col();
+        // Your saved blocks first; they match searches by name too.
+        let blocks: Vec<&crate::blocks::Block> = self.blocks.iter().filter(|b| filter != Kinds::Containers && (!searching || b.title.to_lowercase().contains(query))).collect();
+        if !blocks.is_empty() {
+            let collapsed = !searching && self.collapsed.contains("blocks");
+            out = out.child(self.category_header("blocks", "My blocks", blocks.len(), collapsed, k, cx));
+            if !collapsed {
+                let tiles: Vec<(String, String, String, String)> = blocks
+                    .iter()
+                    .map(|b| (b.name.clone(), b.title.clone(), b.stencil.clone().unwrap_or_else(|| "rect".into()), if b.count == 1 { "Saved block".to_string() } else { format!("Saved block, {} shapes", b.count) }))
+                    .collect();
+                out = out.child(self.block_tiles(tiles, k, cx));
+            }
+        }
         if searching {
             let total: usize = notations.iter().map(|n| n.cats.iter().map(|c| c.1.len()).sum::<usize>() + n.containers.len()).sum();
             out = out.child(div().px(PANEL_PAD).pt(GAP_2).text_size(TEXT_XS).text_color(k.text_faint).child(format!("{total} found across all notations")));
@@ -394,8 +407,38 @@ impl Workspace {
             })
     }
 
+    /// Saved blocks: a click drops a copy at the centre, a drag where it
+    /// lands; right-click to rename or delete.
+    fn block_tiles(&self, tiles: Vec<(String, String, String, String)>, k: Colors, cx: &mut Context<Self>) -> AnyElement {
+        let tiles: Vec<AnyElement> = tiles
+            .into_iter()
+            .enumerate()
+            .map(|(i, (name, title, stencil, detail))| {
+                let menu_for = name.clone();
+                self.tile_base(format!("block-{i}"), &format!("block:{name}"), &title, detail, cx)
+                    .w(gpui_kit::relative(1.0 / 3.0))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap(GAP_1)
+                    .py(GAP_2)
+                    .child(shape_glyph(&stencil, k))
+                    .child(div().w_full().px(GAP_0).text_center().text_size(TEXT_XS).line_height(TEXT_XS * 1.25).text_color(k.text_muted).line_clamp(2).child(title))
+                    .on_mouse_down(gpui_kit::MouseButton::Right, cx.listener(move |ws, ev: &gpui_kit::MouseDownEvent, _, cx| {
+                        ws.block_menu = Some((menu_for.clone(), ev.position));
+                        cx.notify();
+                    }))
+                    .into_any_element()
+            })
+            .collect();
+        div().flex().flex_wrap().px(PANEL_PAD).children(tiles).into_any_element()
+    }
+
     /// Remember a stencil for the "Recently used" row.
     pub(crate) fn note_recent(&mut self, stencil: &str) {
+        if stencil.starts_with("block:") {
+            return;
+        }
         self.recent_stencils.retain(|s| s != stencil);
         self.recent_stencils.insert(0, stencil.to_string());
         self.recent_stencils.truncate(RECENT_MAX);

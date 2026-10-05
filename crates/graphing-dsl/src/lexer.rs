@@ -165,6 +165,10 @@ pub fn lex(src: &str) -> Vec<Token> {
                 {
                     i += src[i..].chars().next().map_or(1, char::len_utf8);
                 }
+                // `c4.*`: any shape of a notation, as a pin type.
+                if src[i..].starts_with(".*") {
+                    i += 2;
+                }
                 Tok::Ident(src[start..i].to_string())
             }
             _ => {

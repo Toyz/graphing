@@ -55,7 +55,7 @@ pub fn add_pair() {
     let msgs = until(&p, |m| matches!(m, FromScript::Ready { .. }));
     assert!(msgs.iter().any(|m| matches!(m, FromScript::Log { level: Level::Info, text } if text == "hello")));
     assert!(msgs.iter().any(|m| matches!(m, FromScript::Pack(t) if t.contains("chip"))));
-    let Some(FromScript::Ready { commands }) = msgs.last() else { unreachable!() };
+    let Some(FromScript::Ready { commands, .. }) = msgs.last() else { unreachable!() };
     assert_eq!(commands, &[CommandInfo { id: "pair".into(), title: "Add a pair".into() }]);
 
     // The snapshot has n1 taken, so new ids skip it.
@@ -100,9 +100,14 @@ fn runaway_scripts_hit_the_budget() {
 fn bad_manifests_and_escapes_are_refused() {
     let dir = plugin_dir("bad", r#"{ "id": "bad id", "name": "x" }"#, "");
     assert!(start(&dir, Limits::default()).is_err());
-    let dir = plugin_dir("escape", r#"{ "id": "esc", "name": "x", "main": "../../../../../../etc/hostname" }"#, "");
+    // A script beside the plugin folder exists on every platform, so only
+    // the folder check can refuse it.
+    let outside = std::env::temp_dir().join(format!("graphing-escape-{}.rn", std::process::id()));
+    std::fs::write(&outside, "pub fn main() {}\n").unwrap();
+    let manifest = format!(r#"{{ "id": "esc", "name": "x", "main": "../{}" }}"#, outside.file_name().unwrap().to_string_lossy());
+    let dir = plugin_dir("escape", &manifest, "");
     match start(&dir, Limits::default()) {
-        Err(e) => assert!(e.contains("outside") || e.contains("No such file"), "{e}"),
+        Err(e) => assert!(e.contains("outside"), "{e}"),
         Ok(_) => panic!("a script outside its folder must not load"),
     }
 }
@@ -112,7 +117,7 @@ fn example_plugin_loads_and_numbers_requirements() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins/sysml-tools");
     let p = start(&dir, Limits::default()).unwrap();
     let msgs = until(&p, |m| matches!(m, FromScript::Ready { .. } | FromScript::Stopped(_)));
-    let Some(FromScript::Ready { commands }) = msgs.last() else { panic!("{msgs:?}") };
+    let Some(FromScript::Ready { commands, .. }) = msgs.last() else { panic!("{msgs:?}") };
     assert_eq!(commands.len(), 2);
     assert!(msgs.iter().any(|m| matches!(m, FromScript::Pack(t) if t.contains("callout"))));
     let mut d = Diagram::default();
@@ -134,4 +139,39 @@ fn example_plugin_loads_and_numbers_requirements() {
     let (op, _) = edits_to_ops(&d, edits);
     d.apply(&op.unwrap()).unwrap();
     assert_eq!(d.layout["a"].pos, Point::new(260.0, 0.0));
+}
+
+#[test]
+fn a_plugin_works_out_pins_from_props() {
+    let manifest = r#"{ "id": "mix", "name": "Mixer", "main": "main.rn", "permissions": ["pins"] }"#;
+    let script = r##"
+use graphing::pins;
+
+pub fn main() {
+    pins::provide("mix.mixer", mixer);
+}
+
+pub fn mixer(props) {
+    let n = match props.get("inputs") { Some(n) => n, None => 2 };
+    let ins = [];
+    for i in 0..n {
+        ins.push(`in${i}: float`);
+    }
+    #{ inputs: ins, "out": [#{ name: "mix", type: "float" }] }
+}
+"##;
+    let dir = plugin_dir("pins", manifest, script);
+    let p = start(&dir, Limits::default()).unwrap();
+    let msgs = until(&p, |m| matches!(m, FromScript::Ready { .. }));
+    let Some(FromScript::Ready { pin_providers, .. }) = msgs.last() else { unreachable!() };
+    assert_eq!(pin_providers, &["mix.mixer"]);
+    p.pins("mix.mixer", "k1", &[("inputs".into(), Value::Num(3.0))]);
+    let msgs = until(&p, |m| matches!(m, FromScript::Pins { .. }));
+    let Some(FromScript::Pins { shape, key, pins }) = msgs.last() else { unreachable!() };
+    assert_eq!((shape.as_str(), key.as_str()), ("mix.mixer", "k1"));
+    assert_eq!(pins.as_ref().unwrap(), &(vec!["in0: float".to_string(), "in1: float".into(), "in2: float".into()], vec!["mix: float".to_string()]));
+    // A shape it does not provide is an error, not a hang.
+    p.pins("mix.other", "k2", &[]);
+    let msgs = until(&p, |m| matches!(m, FromScript::Pins { .. }));
+    assert!(matches!(msgs.last(), Some(FromScript::Pins { pins: Err(_), .. })));
 }

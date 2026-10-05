@@ -102,19 +102,28 @@ Typing goes further than names:
   `switch` one per item of `cases`, `make-array` as many `[N]` inputs as
   `inputs`. A node's own `in` or `out` list replaces its stencil's.
 
-Pins are not tied to the graph pack: any shape from any notation can list
-`in` and `out`, and any shape can be wired into a pin as itself. A wire end
-without a pin is the shape, as an item typed by its `type:` prop or else
-its shape (`c4.database`). So a C4 database can feed a DAG step that takes
-`source: c4.database`, and with `types: [c4.database: c4.container]` one
-that takes any container. Dragging from a shape's connection handle onto a
+Pins work across every notation. Any shape from any pack can list `in`
+and `out`, and any shape or group can be wired into a pin as itself. A
+wire end without a pin is the shape (or group), as an item typed by its
+`type:` prop, else its shape (`c4.database`, `bpmn.task`, `uml.class`) or
+group kind (`c4.system-boundary`). A pin type can name any of those, take
+a whole notation with `c4.*` or `bpmn.*`, use the file's short pack names
+(`use uml as u`: `u.class`) and shape aliases (`c4.db`). So a C4 database
+feeds a DAG step that takes `source: c4.database`; with
+`types: [c4.database: c4.container]` one that takes any container; with
+`bpmn.*` one that takes any BPMN shape. Dragging from a shape's connection handle onto a
 pin (or onto a node with pins) wires it in the same way. Shapes with
 content of their own (C4 notes, UML sections) keep their look and put pin
 names outside; plain boxes get the node-graph title band.
 
-The inspector lists a node's pins with their settled types, wire counts
-and details. None of that is stored: types and counts are worked out from
-the wires each time, so the file holds only what was chosen.
+The inspector's Pins section edits them: add an input or output (`name`
+or `name: type`), rename one (its wires and details follow), change its
+type, default and docs, mark it required or many, move it to a side, or
+remove it with its wires. Editing a node whose pins come from its stencil
+writes them out as its own. Beside each pin it shows what the wires
+settled: a type variable's type and the wire count. None of that is
+stored: types and counts are worked out from the wires each time, so the
+file holds only what was chosen.
 
 ## Around the packs
 

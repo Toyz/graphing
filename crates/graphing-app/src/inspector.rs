@@ -18,6 +18,9 @@ use graphing_ui::kit::{self, IconButton, Lucide, Segment, Segmented, TextButton}
 use graphing_ui::tokens::*;
 use graphing_ui::{Colors, UiExt};
 
+/// An edit built from the diagram as it is when the click lands.
+type MakeOp = Box<dyn Fn(&Diagram) -> Option<Op>>;
+
 use crate::ops::Align;
 use crate::workspace::{RightTab, Workspace, shape_glyph, shape_icon};
 
@@ -64,6 +67,11 @@ impl Workspace {
         let v = value.to_string();
         let placeholder = match key {
             "addport" => "Add port: name or name : Type",
+            "addpin:in" => "Add input: name or name: type",
+            "addpin:out" => "Add output: name or name: type",
+            k if k.starts_with("pintype:") => "any",
+            k if k.starts_with("pindefault:") => "None",
+            k if k.starts_with("pindoc:") => "What this pin is for",
             k if k.starts_with("add:") => "Add item, enter to keep",
             _ => "",
         };
@@ -98,6 +106,31 @@ impl Workspace {
                     (value.as_ref() != d.prop(key)).then(|| Op::SetDiagramProp { key: key.into(), value })
                 }
             }
+        } else if let Some((dir, rest)) = key.split_once(':').filter(|(k, _)| matches!(*k, "pin" | "pintype" | "addpin")).map(|(k, rest)| {
+            let (tag, name) = rest.split_once(':').unwrap_or((rest, ""));
+            let dir = if tag == "out" { graphing_scene::pins::PinDir::Out } else { graphing_scene::pins::PinDir::In };
+            ((k, dir), name)
+        }) {
+            let ((kind, dir), name) = (dir, rest);
+            match kind {
+                "pin" if text.is_empty() || text == name => return,
+                "pin" => {
+                    if self.pin_open.as_ref().is_some_and(|(n, od, on)| n == target && *od == dir && on == name) {
+                        self.pin_open = Some((target.to_string(), dir, text.clone()));
+                    }
+                    crate::ops::rename_pin(&d, target, dir, name, &text)
+                }
+                "pintype" => crate::ops::set_pin_type(&d, target, dir, name, Some(&text)),
+                _ if text.is_empty() => return,
+                _ => {
+                    input.update(cx, |s, cx| s.set_value("", window, cx));
+                    crate::ops::add_pin(&d, target, dir, &text)
+                }
+            }
+        } else if let Some(name) = key.strip_prefix("pindefault:") {
+            crate::ops::set_pin_detail(&d, target, "defaults", name, Some(&text))
+        } else if let Some(name) = key.strip_prefix("pindoc:") {
+            crate::ops::set_pin_detail(&d, target, "docs", name, Some(&text))
         } else if let Some(old) = key.strip_prefix("port:") {
             if text.is_empty() || text == old {
                 return;
@@ -435,7 +468,9 @@ impl Workspace {
         // A node-graph node shows its pins; wire ends there are pins, not ports.
         let pins = graphing_scene::pins::pins(d, &n);
         if !pins.is_empty() {
-            body = body.child(self.pins_row(id, d, &pins, cx));
+            // The Pins section edits these; the generic list skips them.
+            shown.extend(["in", "out", "defaults", "docs", "required", "many", "sides"].map(String::from));
+            body = body.child(self.pins_row(id, d, &pins, window, cx));
         } else if ported || !ports.is_empty() {
             body = body.child(self.ports_row(id, &ports, window, cx));
         }
@@ -729,68 +764,199 @@ impl Workspace {
         self.row(Lucide::Cable, &format!("Ports  {}", ports.len()), None, list, cx)
     }
 
-    /// A node-graph node's pins as they stand: type (what a type variable
-    /// settled on), wires, and the details set for each. Read only; the
-    /// `in`, `out` and detail lists below edit them.
-    fn pins_row(&mut self, id: &str, d: &Diagram, pins: &[graphing_scene::pins::Pin], cx: &mut Context<Self>) -> Div {
+    /// A node-graph node's pins: one row each (type color, name, type,
+    /// marks, wires); a click opens that pin's editor under it. Edits write
+    /// the node's own `in`/`out` lists; wires and details follow a rename.
+    fn pins_row(&mut self, id: &str, d: &Diagram, pins: &[graphing_scene::pins::Pin], window: &mut Window, cx: &mut Context<Self>) -> Div {
         use graphing_scene::pins::{self as gp, PinDir};
         let k = cx.ui();
         let wiring = gp::analyze(d);
+        let open = self.pin_open.clone().filter(|(n, dir, name)| n == id && pins.iter().any(|p| p.dir == *dir && &p.name == name));
         let mut list = div().flex().flex_col().gap(GAP_1);
-        for (dir, title) in [(PinDir::In, "In"), (PinDir::Out, "Out")] {
+        for (dir, title, tag) in [(PinDir::In, "Inputs", "in"), (PinDir::Out, "Outputs", "out")] {
+            let target = id.to_string();
+            let add = cx.listener(move |ws, _, window, cx| {
+                let d = ws.view().read(cx).doc().diagram().clone();
+                let base = if dir == PinDir::In { "input" } else { "output" };
+                let taken: Vec<String> = d.node(&target).map(|n| gp::pins(&d, n).into_iter().map(|p| p.name).collect()).unwrap_or_default();
+                let name = graphing_model::unique_id(base, "", |n| taken.iter().any(|t| t == n));
+                if let Some(op) = crate::ops::add_pin(&d, &target, dir, &name) {
+                    ws.edit(op, cx);
+                    ws.pin_open = Some((target.clone(), dir, name.clone()));
+                    // Straight to naming it.
+                    let input = ws.field(&target, &format!("pin:{tag}:{name}"), &name, window, cx);
+                    input.update(cx, |s, cx| s.focus(window, cx));
+                }
+            });
+            list = list.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .pt(GAP_1)
+                    .child(kit::caption(title, cx))
+                    .child(IconButton::new(SharedString::from(format!("pin-add-{tag}")), Lucide::Plus).small().tooltip(format!("Add {}", if dir == PinDir::In { "an input" } else { "an output" })).on_click(add)),
+            );
             let of: Vec<&gp::Pin> = pins.iter().filter(|p| p.dir == dir).collect();
             if of.is_empty() {
-                continue;
+                list = list.child(div().px(GAP_2).text_size(TEXT_XS).text_color(k.text_faint).child("None"));
             }
-            list = list.child(kit::caption(title, cx));
-            for p in of {
+            for (i, p) in of.into_iter().enumerate() {
                 let key = (id.to_string(), p.name.clone(), p.dir);
-                let resolved = wiring.resolved.get(&key);
+                let resolved = wiring.resolved.get(&key).cloned();
                 let wires = wiring.wires.get(&key).copied().unwrap_or(0);
-                let ty = match (&p.ty, resolved) {
-                    (Some(t), Some(r)) => format!("{t} = {r}"),
+                let color = graphing_ui::tokens::swatch(gp::color(resolved.as_deref().or(p.shown_type())));
+                let is_open = open.as_ref().is_some_and(|(_, od, on)| *od == dir && on == &p.name);
+                let marker = if p.exec() {
+                    div().flex_none().child(kit::icon_named("Play").size(ICON_XS).text_color(k.text_muted))
+                } else {
+                    div().flex_none().size(ICON_XS).rounded_full().bg(color)
+                };
+                let ty = match (&p.ty, &resolved) {
+                    (Some(t), Some(r)) => format!("{t} \u{2192} {r}"),
                     (Some(t), None) => t.clone(),
                     (None, _) if p.exec() => "exec".into(),
                     (None, _) => "any".into(),
                 };
-                let color = gp::color(resolved.map(String::as_str).or(p.shown_type()));
-                let mut notes = Vec::new();
-                if let Some(v) = &p.default {
-                    notes.push(format!("default {v}"));
-                }
-                if p.required {
-                    notes.push("required".into());
-                }
-                if p.many {
-                    notes.push("many".into());
-                }
-                let marker = if p.exec() {
-                    div().flex_none().child(kit::icon_named("Play").size(ICON_SM).text_color(k.text_muted))
-                } else {
-                    div().flex_none().size(ICON_SM).rounded_full().bg(graphing_ui::tokens::swatch(color))
-                };
+                let badge = |text: String| div().flex_none().px(GAP_1).rounded(ROUND_XS).bg(k.hover).text_size(TEXT_XS).text_color(k.text_muted).child(text);
+                let (node, name) = (id.to_string(), p.name.clone());
+                let toggle = cx.listener(move |ws, _, _, cx| {
+                    let now = Some((node.clone(), dir, name.clone()));
+                    ws.pin_open = if ws.pin_open == now { None } else { now };
+                    cx.notify();
+                });
                 list = list.child(
                     div()
+                        .id(SharedString::from(format!("pin-row-{tag}-{i}")))
+                        .h(ROW_H)
+                        .px(GAP_2)
                         .flex()
-                        .flex_col()
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(GAP_2)
-                                .child(marker)
-                                .child(div().flex_1().min_w_0().text_size(TEXT_SM).text_color(k.text).overflow_hidden().text_ellipsis().whitespace_nowrap().child(p.name.clone()))
-                                .child(div().flex_none().font_family(cx.mono()).text_size(TEXT_XS).text_color(k.text_faint).child(ty))
-                                .child(div().flex_none().w(HIT_LG).text_right().text_size(TEXT_XS).text_color(k.text_faint).child(if wires == 0 { String::new() } else { format!("{wires}\u{d7}") })),
-                        )
-                        .when(!notes.is_empty() || p.doc.is_some(), |el| {
-                            let line = notes.into_iter().chain(p.doc.clone()).collect::<Vec<_>>().join(" \u{b7} ");
-                            el.child(div().pl(ICON_SM + GAP_2).text_size(TEXT_XS).text_color(k.text_muted).child(line))
-                        }),
+                        .items_center()
+                        .gap(GAP_2)
+                        .rounded(ROUND_SM)
+                        .cursor_pointer()
+                        .when(is_open, |d| d.bg(k.accent_soft))
+                        .when(!is_open, |d| d.hover(|d| d.bg(k.hover)))
+                        .on_click(toggle)
+                        .child(marker)
+                        .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(TEXT_SM).text_color(if is_open { k.heading } else { k.text }).child(p.name.clone()))
+                        .when(p.required, |d| d.child(badge("required".into())))
+                        .when(p.many, |d| d.child(badge("many".into())))
+                        .when_some(p.default.clone().filter(|_| dir == PinDir::In), |d, v| d.child(badge(format!("= {v}"))))
+                        .child(div().flex_none().font_family(cx.mono()).text_size(TEXT_XS).text_color(k.text_faint).child(ty))
+                        .when(wires > 0, |d| d.child(div().flex_none().text_size(TEXT_XS).text_color(k.text_faint).child(format!("{wires}\u{d7}")))),
                 );
+                if is_open {
+                    list = list.child(self.pin_editor(id, d, p, tag, resolved.as_deref(), wires, window, cx));
+                }
             }
         }
         self.row(Lucide::Workflow, &format!("Pins  {}", pins.len()), None, list, cx)
+    }
+
+    /// The open pin's editor: name and type (with quick picks), default,
+    /// marks, side, description, remove.
+    #[allow(clippy::too_many_arguments)]
+    fn pin_editor(&mut self, id: &str, d: &Diagram, p: &graphing_scene::pins::Pin, tag: &str, resolved: Option<&str>, wires: usize, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        use graphing_scene::pins::PinDir;
+        use graphing_scene::Side;
+        let k = cx.ui();
+        let dir = p.dir;
+        let name = self.field(id, &format!("pin:{tag}:{}", p.name), &p.name, window, cx);
+        let ty = self.field(id, &format!("pintype:{tag}:{}", p.name), p.ty.as_deref().unwrap_or_default(), window, cx);
+        let doc = self.field(id, &format!("pindoc:{}", p.name), p.doc.as_deref().unwrap_or_default(), window, cx);
+        // One edit to this pin, as an op built from the current diagram.
+        let act = |make: MakeOp| {
+            move |ws: &mut Self, cx: &mut Context<Self>| {
+                let d = ws.view().read(cx).doc().diagram().clone();
+                if let Some(op) = make(&d) {
+                    ws.edit(op, cx);
+                }
+            }
+        };
+        let (node, pin) = (id.to_string(), p.name.clone());
+        // Quick picks: the usual types, then ones this diagram already uses.
+        let mut picks: Vec<String> = if p.exec() { vec!["exec".into()] } else { ["float", "int", "bool", "string", "T", "exec"].map(String::from).to_vec() };
+        for n in &d.nodes {
+            for q in graphing_scene::pins::pins(d, n) {
+                if let Some(t) = q.ty
+                    && !picks.contains(&t)
+                    && picks.len() < 9
+                {
+                    picks.push(t);
+                }
+            }
+        }
+        let chips = div().flex().flex_wrap().gap(GAP_1).children(picks.into_iter().enumerate().map(|(i, t)| {
+            let set = act({
+                let (node, pin, t) = (node.clone(), pin.clone(), t.clone());
+                Box::new(move |d| crate::ops::set_pin_type(d, &node, dir, &pin, Some(&t)))
+            });
+            TextButton::new(SharedString::from(format!("pin-ty-{i}")), t.clone()).selected(p.ty.as_deref() == Some(t.as_str())).on_click(cx.listener(move |ws, _, _, cx| set(ws, cx)))
+        }));
+        let mut card = div()
+            .flex()
+            .flex_col()
+            .gap(GAP_3)
+            .p(GAP_3)
+            .rounded(ROUND_MD)
+            .border_1()
+            .border_color(k.border)
+            .bg(k.raised)
+            .child(div().flex().gap(GAP_2).child(div().flex_1().min_w_0().child(kit::field("Name", kit::text_input(&name), cx))).child(div().flex_1().min_w_0().child(kit::field("Type", kit::text_input(&ty), cx))))
+            .child(chips);
+        if dir == PinDir::In && !p.exec() {
+            let default = self.field(id, &format!("pindefault:{}", p.name), p.default.as_deref().unwrap_or_default(), window, cx);
+            let flag = |key: &'static str, on: bool| {
+                let (node, pin) = (node.clone(), pin.clone());
+                act(Box::new(move |d| crate::ops::set_pin_flag(d, &node, key, &pin, !on)))
+            };
+            let (required, many) = (flag("required", p.required), flag("many", p.many));
+            card = card.child(kit::field("Default when unwired", kit::text_input(&default), cx)).child(
+                div()
+                    .flex()
+                    .gap(GAP_2)
+                    .child(TextButton::new("pin-required", "Required").icon(Lucide::Asterisk).selected(p.required).on_click(cx.listener(move |ws, _, _, cx| required(ws, cx))))
+                    .child(TextButton::new("pin-many", "Many wires").icon(Lucide::Layers).selected(p.many).on_click(cx.listener(move |ws, _, _, cx| many(ws, cx)))),
+            );
+        }
+        let sides = [(None, "Auto"), (Some(Side::Left), "Left"), (Some(Side::Right), "Right"), (Some(Side::Top), "Top"), (Some(Side::Bottom), "Bottom")];
+        let segments = sides
+            .into_iter()
+            .map(|(side, label)| {
+                let value = side.map(|_| label.to_lowercase());
+                let set = act({
+                    let (node, pin) = (node.clone(), pin.clone());
+                    Box::new(move |d| crate::ops::set_pin_detail(d, &node, "sides", &pin, value.as_deref()))
+                });
+                let ws = cx.entity().downgrade();
+                kit::Segment::new(label, p.side == side, move |_, _, cx| {
+                    ws.update(cx, |ws, cx| set(ws, cx)).ok();
+                })
+            })
+            .collect();
+        let remove = act({
+            let (node, pin) = (node.clone(), pin.clone());
+            Box::new(move |d| crate::ops::remove_pin(d, &node, dir, &pin))
+        });
+        let state = match (resolved, wires) {
+            (Some(r), w) => format!("Settled as {r} \u{b7} {w} wire{}", if w == 1 { "" } else { "s" }),
+            (None, 0) => "No wires".to_string(),
+            (None, w) => format!("{w} wire{}", if w == 1 { "" } else { "s" }),
+        };
+        card.child(kit::field("Side", kit::Segmented::new("pin-side", segments), cx))
+            .child(kit::field("Description", kit::text_input(&doc), cx))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(div().text_size(TEXT_XS).text_color(k.text_faint).child(state))
+                    .child(TextButton::new("pin-remove", "Remove").icon(Lucide::Trash).danger().on_click(cx.listener(move |ws, _, _, cx| {
+                        ws.pin_open = None;
+                        remove(ws, cx);
+                    }))),
+            )
     }
 
     fn diagram_props(&mut self, d: &Diagram, diags: &[(usize, String)], window: &mut Window, cx: &mut Context<Self>) -> AnyElement {

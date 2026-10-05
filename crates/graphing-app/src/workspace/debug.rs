@@ -61,6 +61,20 @@ impl Workspace {
                 }
             }
             "select" => self.with_view(cx, |v, cx| v.select(arg.split(',').map(str::to_string).collect(), cx)),
+            // `save-block:sel` selects `sel` and asks to save it as a block.
+            "save-block" => {
+                self.with_view(cx, |v, cx| v.select(arg.split(',').map(str::to_string).collect(), cx));
+                self.save_block(window, cx);
+            }
+            // `pin:clamp/in/hi` selects `clamp` and opens pin `hi` in the inspector.
+            "pin" => {
+                let parts: Vec<&str> = arg.splitn(3, '/').collect();
+                if let [node, dir, name] = parts[..] {
+                    self.with_view(cx, |v, cx| v.select(vec![node.to_string()], cx));
+                    let dir = if dir == "out" { graphing_scene::pins::PinDir::Out } else { graphing_scene::pins::PinDir::In };
+                    self.pin_open = Some((node.to_string(), dir, name.to_string()));
+                }
+            }
             // `ask-images` shows the picture dialog with a sample picture.
             "ask-images" => {
                 let img = crate::view::IncomingImage { name: "photo.png".into(), path: Some("photo.png".into()), bytes: Vec::new() };

@@ -26,6 +26,7 @@ graphing is a desktop diagram editor written in Rust on gpui (through [gpui-kit]
 - **One file to share.** `.gphz` packages carry the diagram, its pictures (animated GIF, WebP and AVIF included) and copies of the diagrams it links to.
 - **Bring your diagrams.** Import Mermaid, draw.io, SysML v2 text and Visio `.vsdx`. Export SVG, PNG, SysML v2 and the animated formats.
 - **Make it yours.**
+  - Save any shape, or a set of shapes with the lines between them, as a block: it sits in My blocks and drops into any diagram as a copy of its own.
   - Shape packs are plain JSON.
   - Plugins are sandboxed [Rune](https://rune-rs.github.io) scripts.
   - Settings live in a hand-editable `settings.json`.

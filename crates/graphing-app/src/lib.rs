@@ -1,5 +1,6 @@
 //! gpui shell for graphing.
 
+mod blocks;
 mod color;
 mod combine;
 mod confirm;
@@ -53,6 +54,7 @@ actions!(
         ExportPng,
         ExportSysml,
         InsertImage,
+        SaveAsBlock,
         ImportFile,
         OpenSettings,
         ReloadSettings,
