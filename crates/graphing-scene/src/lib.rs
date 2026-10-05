@@ -101,6 +101,9 @@ pub struct NodeBox {
     pub stereotype: Option<String>,
     pub compartments: Vec<Compartment>,
     pub ports: Vec<PortBox>,
+    /// A node-graph box: title on a band, pin names inside. Shapes with
+    /// content of their own (C4 notes, sections) keep it, pin names outside.
+    pub pin_band: bool,
     /// Custom outline, fitted to `rect`, when `shape` is `Path`.
     pub path: Option<Vec<path::PathCmd>>,
     pub fill: Option<u32>,
@@ -582,6 +585,7 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
             stereotype: spec.stereotype,
             compartments: spec.compartments,
             ports: Vec::new(),
+            pin_band: false,
             path: outline.map(|o| o.fit(Rect::new(pos.x, pos.y, size.0, size.1))),
             // Pack defaults apply where the node sets nothing.
             fill: d.node_prop(n, "fill").or_else(|| find_prop(&defaults, "fill")).and_then(color),
@@ -865,6 +869,7 @@ fn place_ports(d: &Diagram, scene: &mut Scene, wiring: &pins::Analysis) {
             let (resolved, wired) = (wiring.resolved.get(&key).cloned(), wiring.wires.get(&key).copied().unwrap_or(0));
             nb.ports.push(PortBox { name: p.name.clone(), at, side, pin: Some(pins::Pin { resolved, wired, ..p.clone() }) });
         }
+        nb.pin_band = matches!(nb.shape, Shape::Rect | Shape::Rounded) && nb.compartments.is_empty() && nb.notes.is_empty() && nb.stereotype.is_none();
         pinned.insert(n.id.clone());
     }
     // node -> side -> [(port, coordinate of the far end along that side)]

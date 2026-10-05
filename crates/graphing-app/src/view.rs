@@ -1259,6 +1259,30 @@ impl DiagramView {
                     scene.nodes.iter().find(|n| n.id == to)?.ports.iter().find(|p| (p.at.x - current.x).abs() <= tol && (p.at.y - current.y).abs() <= tol).map(|p| p.name.clone())
                 };
                 let port_target = scene.nodes.iter().rev().find_map(|n| to_port(&n.id).map(|p| (n.id.clone(), p)));
+                // From a plain shape onto a pin, or a node that has pins: the
+                // shape goes in as an item, checked like any wire.
+                let pin_of = |node: &str, name: &str| scene.nodes.iter().find(|n| n.id == node)?.ports.iter().find(|p| p.name == name)?.pin.as_ref().map(|p| p.dir);
+                let has_pins = |node: &str| scene.nodes.iter().find(|n| n.id == node).is_some_and(|n| n.ports.iter().any(|p| p.pin.is_some()));
+                let item = |dir: graphing_scene::pins::PinDir| if dir == graphing_scene::pins::PinDir::In { graphing_scene::pins::PinDir::Out } else { graphing_scene::pins::PinDir::In };
+                let as_item = match (&port_target, scene.hit(current)) {
+                    (Some((to, tp)), _) if *to != from && from_port.is_none() => pin_of(to, tp).map(|dir| ops::wire(self.doc.diagram(), (&from, "", item(dir)), (to, tp, dir))),
+                    (None, Some(Hit::Node(to))) if to != from && from_port.is_none() && has_pins(&to) => Some(
+                        ops::best_pin(self.doc.diagram(), (&from, "", graphing_scene::pins::PinDir::Out), &to)
+                            .ok_or_else(|| format!("nothing on `{to}` takes `{from}`"))
+                            .and_then(|(name, dir)| ops::wire(self.doc.diagram(), (&from, "", graphing_scene::pins::PinDir::Out), (&to, &name, dir))),
+                    ),
+                    _ => None,
+                };
+                if let Some(result) = as_item {
+                    match result {
+                        Ok(op) => {
+                            self.apply(op, cx);
+                        }
+                        Err(why) => self.set_status(format!("can't wire: {why}"), cx),
+                    }
+                    cx.notify();
+                    return;
+                }
                 match (port_target, scene.hit(current)) {
                     (Some((to, tp)), _) if to != from => {
                         let op = ops::add_edge_ports(self.doc.diagram(), (&from, from_port.as_deref()), (&to, Some(&tp)));

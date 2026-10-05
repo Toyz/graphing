@@ -886,7 +886,7 @@ impl Kit<'_> {
 
         let structured = nb.shape == Shape::Block || !nb.compartments.is_empty() || nb.stereotype.is_some();
         let centered_glyph = nb.glyph.as_ref().is_some_and(|g| g.at == GlyphAt::Center);
-        let pinned = nb.ports.iter().any(|p| p.pin.is_some()) && matches!(nb.shape, Shape::Rect | Shape::Rounded);
+        let pinned = nb.pin_band;
         if pinned {
             // A node-graph node: its title on a band in its color.
             let (x, y, w) = (r.origin.x, r.origin.y, r.size.w);
@@ -956,7 +956,7 @@ impl Kit<'_> {
             }
         }
         for p in &nb.ports {
-            self.port(s, p, stroke, fill);
+            self.port(s, p, nb.pin_band, stroke, fill);
         }
     }
 
@@ -1116,7 +1116,7 @@ impl Kit<'_> {
 
     /// A node-graph pin: a dot (data) or an arrow (execution) in its type's
     /// color, its name inside the node.
-    fn pin(&self, s: &mut String, p: &PortBox, pin: &pins::Pin) {
+    fn pin(&self, s: &mut String, p: &PortBox, pin: &pins::Pin, inside: bool) {
         let (c, r) = (p.at, pins::PIN_R);
         let color = if pin.exec() { hex(self.t.edge) } else { hex(pins::color(pin.shown_type())) };
         if pin.exec() {
@@ -1134,11 +1134,15 @@ impl Kit<'_> {
             return;
         }
         let gap = r + 6.0;
-        let (x, y, anchor) = match p.side {
-            Side::Left => (c.x + gap, c.y, "start"),
-            Side::Right => (c.x - gap, c.y, "end"),
-            Side::Top => (c.x + r + 3.0, c.y - r - 7.0, "start"),
-            Side::Bottom => (c.x, c.y - gap - 6.0, "middle"),
+        let (x, y, anchor) = match (p.side, inside) {
+            (Side::Left, true) => (c.x + gap, c.y, "start"),
+            (Side::Right, true) => (c.x - gap, c.y, "end"),
+            (Side::Bottom, true) => (c.x, c.y - gap - 6.0, "middle"),
+            // Outside a shape that has content of its own, above the wire.
+            (Side::Left, false) => (c.x - gap, c.y - 8.0, "end"),
+            (Side::Right, false) => (c.x + gap, c.y - 8.0, "start"),
+            (Side::Bottom, false) => (c.x + r + 3.0, c.y + r + 7.0, "start"),
+            (Side::Top, _) => (c.x + r + 3.0, c.y - r - 7.0, "start"),
         };
         let _ = writeln!(
             s,
@@ -1151,9 +1155,9 @@ impl Kit<'_> {
         );
     }
 
-    fn port(&self, s: &mut String, p: &PortBox, stroke: u32, fill: u32) {
+    fn port(&self, s: &mut String, p: &PortBox, inside: bool, stroke: u32, fill: u32) {
         if let Some(pin) = &p.pin {
-            return self.pin(s, p, pin);
+            return self.pin(s, p, pin, inside);
         }
         let h = PORT / 2.0;
         let _ = writeln!(

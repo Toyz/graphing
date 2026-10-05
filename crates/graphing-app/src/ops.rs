@@ -50,7 +50,8 @@ pub fn add_edge_ports(d: &Diagram, from: (&str, Option<&str>), to: (&str, Option
     Op::AddEdge { edge, index: d.edges.len() }
 }
 
-/// One end of a wire: node, pin, and which way the pin faces.
+/// One end of a wire: node, pin, and which way the pin faces. An empty pin
+/// name is the node itself, wired as an item (any shape can feed a pin).
 pub type PinEnd<'a> = (&'a str, &'a str, PinDir);
 
 /// Wire two pins, in whichever order they were picked: from the output to
@@ -65,7 +66,14 @@ pub fn wire(d: &Diagram, a: PinEnd, b: PinEnd) -> Result<Op, String> {
     if src.0 == dst.0 {
         return Err("a node cannot wire to itself".into());
     }
-    let pin = |(node, name, dir): PinEnd| d.node(node).and_then(|n| graphing_scene::pins::pins(d, n).into_iter().find(|p| p.name == name && p.dir == dir));
+    let pin = |(node, name, dir): PinEnd| {
+        let n = d.node(node)?;
+        if name.is_empty() {
+            return Some(graphing_scene::pins::Pin::new("", None, dir));
+        }
+        graphing_scene::pins::pins(d, n).into_iter().find(|p| p.name == name && p.dir == dir)
+    };
+    let port = |p: PinEnd| (!p.1.is_empty()).then(|| p.1.to_string());
     let (Some(sp), Some(dp)) = (pin(src), pin(dst)) else { return Err("no such pin".into()) };
     // Which pin an edge end means: the source end is the output.
     type End<'e> = (&'e str, Option<&'e str>);
@@ -76,7 +84,7 @@ pub fn wire(d: &Diagram, a: PinEnd, b: PinEnd) -> Result<Op, String> {
             _ => None,
         }
     }
-    let at = |end: (&str, Option<&str>), p: PinEnd| end.0 == p.0 && end.1 == Some(p.1);
+    let at = |end: (&str, Option<&str>), p: PinEnd| end.0 == p.0 && end.1 == (!p.1.is_empty()).then_some(p.1);
     if d.edges.iter().filter_map(ends).any(|(s, t)| at(s, src) && at(t, dst)) {
         return Err("already wired".into());
     }
@@ -92,8 +100,8 @@ pub fn wire(d: &Diagram, a: PinEnd, b: PinEnd) -> Result<Op, String> {
         id: edge_key(&probe, src.0, dst.0),
         from: src.0.into(),
         to: dst.0.into(),
-        from_port: Some(src.1.into()),
-        to_port: Some(dst.1.into()),
+        from_port: port(src),
+        to_port: port(dst),
         arrow: Arrow::Forward,
         ..Default::default()
     };
@@ -831,6 +839,16 @@ mod tests {
         assert_eq!(best_pin(doc.diagram(), ("x", "value", PinDir::Out), "add"), Some(("b".into(), PinDir::In)));
         // From an input, the node's fitting output.
         assert_eq!(best_pin(doc.diagram(), ("add", "b", PinDir::In), "x"), Some(("value".into(), PinDir::Out)));
+    }
+
+    #[test]
+    fn a_plain_shape_wires_in_as_an_item() {
+        let mut doc = Document::parse("use c4, graph\ndb: c4.database\ndump: graph.task { in: [source: c4.database, n: int] }\n");
+        let op = wire(doc.diagram(), ("dump", "source", PinDir::In), ("db", "", PinDir::Out)).unwrap();
+        doc.apply(&op).unwrap();
+        assert!(doc.source().contains("db -> dump.source"), "{}", doc.source());
+        assert!(wire(doc.diagram(), ("db", "", PinDir::Out), ("dump", "n", PinDir::In)).unwrap_err().contains("takes int"));
+        assert_eq!(best_pin(doc.diagram(), ("db", "", PinDir::Out), "dump"), None, "source is taken, n does not fit");
     }
 }
 

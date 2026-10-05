@@ -690,8 +690,7 @@ fn node(f: &Frame, n: &NodeBox, window: &mut Window, cx: &mut App) {
             }
         }
     }
-    let pinned = n.ports.iter().any(|p| p.pin.is_some());
-    if pinned && matches!(n.shape, Shape::Rect | Shape::Rounded) {
+    if n.pin_band {
         node_header(f, n, b, stroke, window, cx);
     }
     // Pictures cannot fade; they appear halfway through.
@@ -711,7 +710,7 @@ fn node(f: &Frame, n: &NodeBox, window: &mut Window, cx: &mut App) {
     }
 
     let structured = n.shape == Shape::Block || !n.compartments.is_empty() || n.stereotype.is_some();
-    if f.editing == Some(n.id.as_str()) || pinned && matches!(n.shape, Shape::Rect | Shape::Rounded) {
+    if f.editing == Some(n.id.as_str()) || n.pin_band {
         // The in-place editor draws the label; a node graph node, its header.
     } else if structured {
         structured_text(f, n, b, ink, stroke, window, cx);
@@ -741,7 +740,7 @@ fn node(f: &Frame, n: &NodeBox, window: &mut Window, cx: &mut App) {
         }
     }
     for p in &n.ports {
-        port(f, p, stroke, fill, window, cx);
+        port(f, p, n.pin_band, stroke, fill, window, cx);
     }
 }
 
@@ -812,7 +811,7 @@ fn node_header(f: &Frame, n: &NodeBox, b: Bounds<Pixels>, stroke: Hsla, window: 
 
 /// A node-graph pin: a dot (data) or an arrow (execution) in its type's
 /// color, its name inside the node.
-fn pin(f: &Frame, p: &PortBox, pin: &pins::Pin, window: &mut Window, cx: &mut App) {
+fn pin(f: &Frame, p: &PortBox, pin: &pins::Pin, inside: bool, window: &mut Window, cx: &mut App) {
     let c = f.view.pt(p.at);
     let r = f.view.len(pins::PIN_R as f32);
     let color = if pin.exec() { f.palette.edge } else { f.rgb(pins::color(pin.shown_type())) };
@@ -839,19 +838,23 @@ fn pin(f: &Frame, p: &PortBox, pin: &pins::Pin, window: &mut Window, cx: &mut Ap
     let line = shape_text(&caption, size_px, f.palette.text, Face::Sans, f, window);
     let lh = px(size_px * 1.3);
     let gap = r + f.view.len(6.0);
-    let origin = match p.side {
-        Side::Left => point(c.x + gap, c.y - lh / 2.0),
-        Side::Right => point(c.x - gap - line.width, c.y - lh / 2.0),
+    let origin = match (p.side, inside) {
+        (Side::Left, true) => point(c.x + gap, c.y - lh / 2.0),
+        (Side::Right, true) => point(c.x - gap - line.width, c.y - lh / 2.0),
+        (Side::Bottom, true) => point(c.x - line.width / 2.0, c.y - gap - lh),
+        // Outside a shape that has content of its own, above the wire.
+        (Side::Left, false) => point(c.x - gap - line.width, c.y - lh),
+        (Side::Right, false) => point(c.x + gap, c.y - lh),
+        (Side::Bottom, false) => point(c.x + r + f.view.len(3.0), c.y + r),
         // Above the node, clear of its title, beside the wire coming in.
-        Side::Top => point(c.x + r + f.view.len(3.0), c.y - r - lh),
-        Side::Bottom => point(c.x - line.width / 2.0, c.y - gap - lh),
+        (Side::Top, _) => point(c.x + r + f.view.len(3.0), c.y - r - lh),
     };
     line.paint(origin, lh, TextAlign::Left, None, window, cx).ok();
 }
 
-fn port(f: &Frame, p: &PortBox, stroke: Hsla, fill: Hsla, window: &mut Window, cx: &mut App) {
+fn port(f: &Frame, p: &PortBox, inside: bool, stroke: Hsla, fill: Hsla, window: &mut Window, cx: &mut App) {
     if let Some(info) = &p.pin {
-        return pin(f, p, info, window, cx);
+        return pin(f, p, info, inside, window, cx);
     }
     let c = f.view.pt(p.at);
     let h = f.view.len(PORT as f32 / 2.0);

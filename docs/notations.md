@@ -102,6 +102,16 @@ Typing goes further than names:
   `switch` one per item of `cases`, `make-array` as many `[N]` inputs as
   `inputs`. A node's own `in` or `out` list replaces its stencil's.
 
+Pins are not tied to the graph pack: any shape from any notation can list
+`in` and `out`, and any shape can be wired into a pin as itself. A wire end
+without a pin is the shape, as an item typed by its `type:` prop or else
+its shape (`c4.database`). So a C4 database can feed a DAG step that takes
+`source: c4.database`, and with `types: [c4.database: c4.container]` one
+that takes any container. Dragging from a shape's connection handle onto a
+pin (or onto a node with pins) wires it in the same way. Shapes with
+content of their own (C4 notes, UML sections) keep their look and put pin
+names outside; plain boxes get the node-graph title band.
+
 The inspector lists a node's pins with their settled types, wire counts
 and details. None of that is stored: types and counts are worked out from
 the wires each time, so the file holds only what was chosen.

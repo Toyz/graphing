@@ -587,3 +587,21 @@ fn dragging_between_pins_wires_them(cx: &mut TestAppContext) {
     assert!(!source(&view, cx).contains("add.b"));
     assert!(source(&view, cx).contains("add.a"));
 }
+
+#[gpui_kit::test]
+fn dragging_a_shape_onto_a_pin_wires_it_in(cx: &mut TestAppContext) {
+    use graphing_scene::pins::PinDir;
+    let src = "use c4, graph\ndb: c4.database\ndump: graph.task { in: [source: c4.database] }\n\nlayout {\n  db 0 0\n  dump 400 0\n}\n";
+    let (view, cx) = open(cx, src);
+    // The right-hand connection handle of the database.
+    let (handle, target) = view.read_with(cx, |v, _| {
+        let s = v.scene();
+        let r = s.rect_of("db").unwrap();
+        (graphing_scene::ports(r)[1], s.port_toward("dump", "source", PinDir::In).unwrap().at)
+    });
+    let (from, to) = (at(&view, cx, handle.x, handle.y), at(&view, cx, target.x, target.y));
+    let over = at(&view, cx, 60.0, 40.0);
+    cx.simulate_mouse_move(over, None, Modifiers::default());
+    drag(cx, from, to, MouseButton::Left);
+    assert!(source(&view, cx).contains("db -> dump.source"), "{}", source(&view, cx));
+}

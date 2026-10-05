@@ -401,15 +401,36 @@ impl Vars {
     }
 }
 
+/// `node.pin` for messages; a shape wired as an item is just `node`.
+fn pin_at(node: &str, p: &Pin) -> String {
+    if p.name.is_empty() { node.to_string() } else { format!("{node}.{}", p.name) }
+}
+
 /// Work out the wiring of `d`: problems, the types type-variable pins
 /// settle on, and how many wires meet each pin.
 pub fn analyze(d: &Diagram) -> Analysis {
     let mut a = Analysis::default();
     let pins_of: HashMap<&str, Vec<Pin>> = d.nodes.iter().map(|n| (n.id.as_str(), pins(d, n))).filter(|(_, p)| !p.is_empty()).collect();
     let up = supertypes(d);
+    // A wire end without a pin is the shape itself, as an item: it gives
+    // itself, typed by its `type:` or its shape (`c4.database`), and takes
+    // anything. A C4 container can feed a DAG step this way.
+    let items: HashMap<&str, [Pin; 2]> = d
+        .nodes
+        .iter()
+        .map(|n| {
+            let ty = d.node_prop(n, "type").map(Value::text).or_else(|| n.stencil.clone());
+            (n.id.as_str(), [Pin { ty, ..Pin::new("", None, PinDir::Out) }, Pin::new("", None, PinDir::In)])
+        })
+        .collect();
     // Where an input and an output share a name (`exec`), a wire's source
     // end means the output and its target end the input.
     let find = |node: &str, port: &Option<String>, dir: PinDir| -> Option<Result<&Pin, String>> {
+        if port.is_none()
+            && let Some(item) = items.get(node)
+        {
+            return Some(Ok(&item[usize::from(dir == PinDir::In)]));
+        }
         let pins = pins_of.get(node)?;
         let port = port.as_deref()?;
         let named = |p: &&Pin| p.name == port;
@@ -429,18 +450,24 @@ pub fn analyze(d: &Diagram) -> Analysis {
             }
         }
         for (node, r) in [(&e.from, &pa), (&e.to, &pb)] {
-            if let Some(Ok(p)) = r {
+            if let Some(Ok(p)) = r
+                && !p.name.is_empty()
+            {
                 *a.wires.entry((node.clone(), p.name.clone(), p.dir)).or_default() += 1;
             }
         }
         let (Some(Ok(pa)), Some(Ok(pb))) = (pa, pb) else { continue };
+        // Two plain shapes: an ordinary line, nothing to check.
+        if pa.name.is_empty() && pb.name.is_empty() {
+            continue;
+        }
         // `<-` runs the other way; `--` and `<->` say nothing about direction.
         let (src, dst) = match e.arrow {
             graphing_model::Arrow::Back => ((e.to.clone(), pb), (e.from.clone(), pa)),
             graphing_model::Arrow::Forward => ((e.from.clone(), pa), (e.to.clone(), pb)),
             _ => continue,
         };
-        let end = |(n, p): &(String, &Pin)| format!("{n}.{}", p.name);
+        let end = |(n, p): &(String, &Pin)| pin_at(n, p);
         let problem = |message: String| Problem { id: e.id.clone(), message };
         if src.1.dir != PinDir::Out {
             a.problems.push(problem(format!("`{}` is an input; wires leave from outputs", end(&src))));
@@ -470,10 +497,10 @@ pub fn analyze(d: &Diagram) -> Analysis {
         let clash = match (sv, dv, &sp.ty, &dp.ty) {
             (Some(x), Some(y), _, _) => vars.join(x, y).err().map(|(x, y)| format!("this wire would make one type both {x} and {y}")),
             (Some(x), None, _, Some(t)) if !matches!(t.as_str(), "any" | "wildcard") => {
-                vars.bind(x, t).err().map(|had| format!("`{sn}.{}` is {had} here, but `{dn}.{}` takes {t}", sp.name, dp.name))
+                vars.bind(x, t).err().map(|had| format!("`{}` is {had} here, but `{}` takes {t}", pin_at(sn, sp), pin_at(dn, dp)))
             }
             (None, Some(y), Some(t), _) if !matches!(t.as_str(), "any" | "wildcard") => {
-                vars.bind(y, t).err().map(|had| format!("`{dn}.{}` is {had} here, but `{sn}.{}` gives {t}", dp.name, sp.name))
+                vars.bind(y, t).err().map(|had| format!("`{}` is {had} here, but `{}` gives {t}", pin_at(dn, dp), pin_at(sn, sp)))
             }
             _ => None,
         };
@@ -492,7 +519,7 @@ pub fn analyze(d: &Diagram) -> Analysis {
             && !assignable(st, dt, &up)
             && !a.problems.iter().any(|p| &p.id == id)
         {
-            a.problems.push(Problem { id: id.clone(), message: format!("`{sn}.{}` gives {st} but `{dn}.{}` takes {dt}", sp.name, dp.name) });
+            a.problems.push(Problem { id: id.clone(), message: format!("`{}` gives {st} but `{}` takes {dt}", pin_at(sn, sp), pin_at(dn, dp)) });
         }
     }
     for (node, list) in &pins_of {
@@ -784,6 +811,16 @@ mod tests {
         // The node's own list replaces the stencil's.
         let doc = Document::parse("use graph\nseq: graph.sequence { out: [first: exec] }\n");
         assert_eq!(pins(doc.diagram(), doc.diagram().node("seq").unwrap()).iter().filter(|p| p.dir == PinDir::Out).count(), 1);
+    }
+
+    #[test]
+    fn any_shape_feeds_a_pin_as_itself() {
+        let src = "diagram { types: [c4.database: c4.container] }\nuse c4, graph\ndb: c4.database\nweb: c4.container { out: [events: event] }\nnote: { type: memo }\ndump: graph.task { in: [source: c4.container, who: c4.database, text: memo] }\ndb -> dump.source\nnote -> dump.text\nweb -> dump.who\nweb -- db\n";
+        let (a, msgs) = analysis(src);
+        // A database fits a container input (subtype); a container is not a
+        // database; a shape's own `type:` counts; plain lines are not wires.
+        assert_eq!(msgs, ["web->dump: `web` gives c4.container but `dump.who` takes c4.database"]);
+        assert_eq!(a.wires.get(&("dump".into(), "source".into(), PinDir::In)), Some(&1));
     }
 }
 
