@@ -12,24 +12,48 @@ use graphing_model::{Diagram, Node, Point, Rect, Value};
 use crate::notation::{Flow, TITLE_CHAR};
 
 /// Which way a pin carries flow.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PinDir {
+    #[default]
     In,
     Out,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Pin {
     pub name: String,
-    /// `float`, `exec`, a struct name; `None` takes anything.
+    /// `float`, `exec`, a struct name, or a type variable (`T`) the wires
+    /// decide; `None` takes anything.
     pub ty: Option<String>,
     pub dir: PinDir,
     /// Where the node puts it (`in_side`, `out_side`, `sides: [a: top]`);
     /// `None` for the default, inputs facing the inflow.
     pub side: Option<crate::Side>,
+    /// The value an unwired input uses (`defaults: [b: 0.5]`).
+    pub default: Option<String>,
+    /// Must be wired or have a default (`required: [a]`).
+    pub required: bool,
+    /// An input that takes any number of wires (`many: [items]`).
+    pub many: bool,
+    /// What it is for (`docs: [a: "Health before damage"]`).
+    pub doc: Option<String>,
+    /// The type the wires settled on for a type variable; set by the scene.
+    pub resolved: Option<String>,
+    /// Wires meeting it; set by the scene.
+    pub wired: usize,
 }
 
 impl Pin {
+    pub fn new(name: &str, ty: Option<&str>, dir: PinDir) -> Self {
+        Pin { name: name.to_string(), ty: ty.map(str::to_string), dir, ..Default::default() }
+    }
+
+    /// The type to show and check: what the wires settled on, else as
+    /// declared.
+    pub fn shown_type(&self) -> Option<&str> {
+        self.resolved.as_deref().or(self.ty.as_deref()).filter(|t| !is_var(t))
+    }
+
     /// Execution order rather than data: `exec`, or typed `exec`.
     pub fn exec(&self) -> bool {
         self.ty.as_deref() == Some("exec") || self.ty.is_none() && self.name == "exec"
@@ -38,6 +62,14 @@ impl Pin {
     /// Text beside the pin; a lone `exec` pin goes unnamed, as in Blueprint.
     pub fn label(&self) -> &str {
         if self.exec() && self.name == "exec" { "" } else { &self.name }
+    }
+
+    /// The label with an unwired input's own value: `b = 0.5`.
+    pub fn caption(&self) -> String {
+        match &self.default {
+            Some(v) if self.wired == 0 && self.dir == PinDir::In => format!("{} = {v}", self.label()),
+            _ => self.label().to_string(),
+        }
     }
 }
 
@@ -60,44 +92,69 @@ fn side_named(name: &str) -> Option<crate::Side> {
     })
 }
 
-/// The node's pins: `in` then `out`, each item `name` or `name: type`.
-/// `in_side: top` (or `out_side`) moves a whole list; `sides: [a: bottom]`
-/// one pin.
-pub fn pins(d: &Diagram, n: &Node) -> Vec<Pin> {
-    let mut out = Vec::new();
-    let text = |key: &str| d.node_prop(n, key).map(Value::text);
-    let one: HashMap<String, crate::Side> = d
-        .node_prop(n, "sides")
-        .and_then(Value::as_list)
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|it| {
-            let t = it.text();
-            let (name, side) = t.split_once(':')?;
-            Some((name.trim().to_string(), side_named(side.trim())?))
-        })
-        .collect();
-    for (key, dir) in [("in", PinDir::In), ("out", PinDir::Out)] {
-        let list_side = text(&format!("{key}_side")).as_deref().and_then(side_named);
-        // The node's own list, else its stencil's (a branch comes wired).
-        let fallback = || graphing_model::find_prop(&crate::stencils::registry().resolve(n.stencil.as_deref()).defaults, key).cloned();
-        let Some(list) = d.node_prop(n, key).cloned().or_else(fallback) else { continue };
-        let Some(items) = list.as_list() else { continue };
-        for it in items {
-            let (name, ty) = match it {
-                Value::Pair(name, ty) => (name.clone(), Some(ty.text())),
-                other => {
-                    let text = other.text();
-                    match text.split_once(':') {
-                        Some((n, t)) => (n.trim().to_string(), Some(t.trim().to_string())),
-                        None => (text.trim().to_string(), None),
-                    }
-                }
-            };
-            if !name.is_empty() {
-                let side = one.get(&name).copied().or(list_side);
-                out.push(Pin { name, ty: ty.filter(|t| !t.is_empty()), dir, side });
+/// A type variable: one capital letter, maybe numbered (`T`, `K`, `T2`).
+/// Each node has its own; the wires decide what it is.
+pub fn is_var(ty: &str) -> bool {
+    let mut c = ty.chars();
+    c.next().is_some_and(|f| f.is_ascii_uppercase()) && c.all(|d| d.is_ascii_digit())
+}
+
+/// `name` or `name: type` from a list item.
+fn split_item(it: &Value) -> (String, Option<String>) {
+    match it {
+        Value::Pair(name, v) => (name.clone(), Some(v.text())),
+        other => {
+            let text = other.text();
+            match text.split_once(':') {
+                Some((n, t)) => (n.trim().to_string(), Some(t.trim().to_string())),
+                None => (text.trim().to_string(), None),
             }
+        }
+    }
+}
+
+/// The node's pins: `in` then `out`, each item `name` or `name: type`. A
+/// node without its own lists takes its stencil's (`pins`, which may
+/// repeat by a count or over a list, or the older `in`/`out` defaults).
+/// `in_side: top` (or `out_side`) moves a whole list, `sides: [a: bottom]`
+/// one pin; `defaults`, `required`, `many` and `docs` describe pins by name.
+pub fn pins(d: &Diagram, n: &Node) -> Vec<Pin> {
+    let reg = crate::stencils::registry();
+    let def = reg.resolve(n.stencil.as_deref());
+    // The node's prop, else its stencil's default.
+    let prop = |key: &str| d.node_prop(n, key).cloned().or_else(|| graphing_model::find_prop(&def.defaults, key).cloned());
+    let pairs = |key: &str| -> HashMap<String, String> {
+        prop(key).as_ref().and_then(Value::as_list).unwrap_or_default().iter().map(split_item).filter_map(|(k, v)| Some((k, v?))).collect()
+    };
+    let names = |key: &str| -> Vec<String> { prop(key).as_ref().and_then(Value::as_list).unwrap_or_default().iter().map(|v| split_item(v).0).collect() };
+    let (sides, defaults, docs) = (pairs("sides"), pairs("defaults"), pairs("docs"));
+    let (required, many) = (names("required"), names("many"));
+    let mut out = Vec::new();
+    for (key, dir) in [("in", PinDir::In), ("out", PinDir::Out)] {
+        let list_side = prop(&format!("{key}_side")).map(|v| v.text()).as_deref().and_then(side_named);
+        let declared: Vec<(String, Option<String>)> = match d.node_prop(n, key).and_then(Value::as_list) {
+            Some(items) => items.iter().map(split_item).collect(),
+            None => match &def.pins {
+                Some(t) => t.expand(if dir == PinDir::In { &t.ins } else { &t.outs }, &|k: &str| d.node_prop(n, k).cloned()),
+                None => prop(key).as_ref().and_then(Value::as_list).unwrap_or_default().iter().map(split_item).collect(),
+            },
+        };
+        for (name, ty) in declared {
+            if name.is_empty() {
+                continue;
+            }
+            out.push(Pin {
+                side: sides.get(&name).and_then(|s| side_named(s)).or(list_side),
+                default: defaults.get(&name).cloned(),
+                required: required.contains(&name),
+                many: many.contains(&name),
+                doc: docs.get(&name).cloned(),
+                ty: ty.filter(|t| !t.is_empty()),
+                dir,
+                name,
+                resolved: None,
+                wired: 0,
+            });
         }
     }
     out
@@ -119,7 +176,7 @@ pub fn side_of(p: &Pin, flow: Flow) -> crate::Side {
 pub fn size(title: &str, pins: &[Pin], flow: Flow) -> (f64, f64) {
     let snap = |v: f64| (v / 10.0).ceil() * 10.0;
     let on = |side: crate::Side| pins.iter().filter(move |p| side_of(p, flow) == side);
-    let widest = |side| on(side).map(|p| p.label().chars().count()).max().unwrap_or(0) as f64 * PIN_CHAR;
+    let widest = |side| on(side).map(|p| p.caption().chars().count()).max().unwrap_or(0) as f64 * PIN_CHAR;
     let count = |side| on(side).count() as f64;
     let (l, r, t, b) = (crate::Side::Left, crate::Side::Right, crate::Side::Top, crate::Side::Bottom);
     let per = (widest(t).max(widest(b)) + 24.0).max(36.0);
@@ -203,6 +260,21 @@ pub fn color(ty: Option<&str>) -> u32 {
     }
 }
 
+/// Whether a wire may run from output `src` into input `dst`: both carry
+/// execution or both data, and data types agree (`any` or no type takes
+/// anything).
+/// `src` and `dst` carry their settled types (`shown_type`); an unsettled
+/// type variable takes anything, as does `any`.
+pub fn fits(d: &Diagram, src: &Pin, dst: &Pin) -> bool {
+    if src.dir != PinDir::Out || dst.dir != PinDir::In || src.exec() != dst.exec() {
+        return false;
+    }
+    match (src.shown_type(), dst.shown_type()) {
+        (Some(a), Some(b)) => src.exec() || assignable(a, b, &supertypes(d)),
+        _ => true,
+    }
+}
+
 /// Something wrong with a wire or a node, for the Problems list.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Problem {
@@ -220,10 +292,121 @@ pub fn acyclic(d: &Diagram) -> bool {
     }
 }
 
+/// A pin by node, name and direction.
+pub type PinKey = (String, String, PinDir);
+
+/// A wire end during analysis: the node and its pin.
+type PinAt<'a> = (String, &'a Pin);
+
+/// What the wiring of a diagram works out to.
+#[derive(Debug, Clone, Default)]
+pub struct Analysis {
+    pub problems: Vec<Problem>,
+    /// The concrete type each type-variable pin settled on.
+    pub resolved: HashMap<PinKey, String>,
+    /// Wires at each pin.
+    pub wires: HashMap<PinKey, usize>,
+}
+
 /// Every problem with how `d` is wired.
 pub fn problems(d: &Diagram) -> Vec<Problem> {
-    let mut out = Vec::new();
+    analyze(d).problems
+}
+
+/// Supertypes: the diagram's `types: [Pawn: Actor]`, then every pack's.
+fn supertypes(d: &Diagram) -> HashMap<String, String> {
+    let mut up = crate::stencils::registry().types.clone();
+    if let Some(items) = d.prop("types").and_then(Value::as_list) {
+        up.extend(items.iter().map(split_item).filter_map(|(k, v)| Some((k, v?))));
+    }
+    up
+}
+
+/// Whether a value of type `from` may go where `to` is wanted: the same
+/// type, a subtype, or either side loose (`any`, untyped).
+fn assignable(from: &str, to: &str, up: &HashMap<String, String>) -> bool {
+    if matches!(from, "any" | "wildcard") || matches!(to, "any" | "wildcard") || from == to {
+        return true;
+    }
+    let mut at = from;
+    for _ in 0..64 {
+        match up.get(at) {
+            Some(next) if next == to => return true,
+            Some(next) => at = next,
+            None => return false,
+        }
+    }
+    false
+}
+
+/// Type variables, one set per node, joined by wires (union-find); each
+/// set holds the first concrete type that reached it.
+struct Vars {
+    parent: Vec<usize>,
+    bound: Vec<Option<String>>,
+    ids: HashMap<(String, String), usize>,
+}
+
+impl Vars {
+    fn var(&mut self, node: &str, name: &str) -> usize {
+        let next = self.parent.len();
+        let id = *self.ids.entry((node.to_string(), name.to_string())).or_insert(next);
+        if id == next {
+            self.parent.push(id);
+            self.bound.push(None);
+        }
+        id
+    }
+
+    fn root(&mut self, mut v: usize) -> usize {
+        while self.parent[v] != v {
+            self.parent[v] = self.parent[self.parent[v]];
+            v = self.parent[v];
+        }
+        v
+    }
+
+    /// Join two sets; `Err` with both types when they hold different ones.
+    fn join(&mut self, a: usize, b: usize) -> Result<(), (String, String)> {
+        let (ra, rb) = (self.root(a), self.root(b));
+        if ra == rb {
+            return Ok(());
+        }
+        match (self.bound[ra].clone(), self.bound[rb].clone()) {
+            (Some(x), Some(y)) if x != y => return Err((x, y)),
+            (None, Some(y)) => self.bound[ra] = Some(y),
+            _ => {}
+        }
+        self.parent[rb] = ra;
+        Ok(())
+    }
+
+    /// Give a set a concrete type; `Err` with the one it already has.
+    fn bind(&mut self, v: usize, ty: &str) -> Result<(), String> {
+        let r = self.root(v);
+        match &self.bound[r] {
+            Some(t) if t != ty => Err(t.clone()),
+            Some(_) => Ok(()),
+            None => {
+                self.bound[r] = Some(ty.to_string());
+                Ok(())
+            }
+        }
+    }
+
+    fn get(&mut self, node: &str, name: &str) -> Option<String> {
+        let v = *self.ids.get(&(node.to_string(), name.to_string()))?;
+        let r = self.root(v);
+        self.bound[r].clone()
+    }
+}
+
+/// Work out the wiring of `d`: problems, the types type-variable pins
+/// settle on, and how many wires meet each pin.
+pub fn analyze(d: &Diagram) -> Analysis {
+    let mut a = Analysis::default();
     let pins_of: HashMap<&str, Vec<Pin>> = d.nodes.iter().map(|n| (n.id.as_str(), pins(d, n))).filter(|(_, p)| !p.is_empty()).collect();
+    let up = supertypes(d);
     // Where an input and an output share a name (`exec`), a wire's source
     // end means the output and its target end the input.
     let find = |node: &str, port: &Option<String>, dir: PinDir| -> Option<Result<&Pin, String>> {
@@ -232,68 +415,116 @@ pub fn problems(d: &Diagram) -> Vec<Problem> {
         let named = |p: &&Pin| p.name == port;
         Some(pins.iter().filter(named).find(|p| p.dir == dir).or_else(|| pins.iter().find(named)).ok_or_else(|| format!("`{node}` has no pin `{port}`")))
     };
-    // How many wires reach each (node, pin), to catch doubled inputs.
+    let mut vars = Vars { parent: Vec::new(), bound: Vec::new(), ids: HashMap::new() };
+    // Wires that passed the shape checks, for the type pass.
+    let mut typed: Vec<(String, PinAt, PinAt)> = Vec::new();
     let mut into: HashMap<(String, String), Vec<String>> = HashMap::new();
     let mut from: HashMap<(String, String), Vec<String>> = HashMap::new();
     for e in &d.edges {
         let (from_dir, to_dir) = if e.arrow == graphing_model::Arrow::Back { (PinDir::In, PinDir::Out) } else { (PinDir::Out, PinDir::In) };
-        let (a, b) = (find(&e.from, &e.from_port, from_dir), find(&e.to, &e.to_port, to_dir));
-        for r in [&a, &b] {
+        let (pa, pb) = (find(&e.from, &e.from_port, from_dir), find(&e.to, &e.to_port, to_dir));
+        for r in [&pa, &pb] {
             if let Some(Err(m)) = r {
-                out.push(Problem { id: e.id.clone(), message: m.clone() });
+                a.problems.push(Problem { id: e.id.clone(), message: m.clone() });
             }
         }
-        let (Some(Ok(pa)), Some(Ok(pb))) = (a, b) else { continue };
+        for (node, r) in [(&e.from, &pa), (&e.to, &pb)] {
+            if let Some(Ok(p)) = r {
+                *a.wires.entry((node.clone(), p.name.clone(), p.dir)).or_default() += 1;
+            }
+        }
+        let (Some(Ok(pa)), Some(Ok(pb))) = (pa, pb) else { continue };
         // `<-` runs the other way; `--` and `<->` say nothing about direction.
-        let (src, dst, src_end, dst_end) = match e.arrow {
-            graphing_model::Arrow::Back => (pb, pa, (&e.to, &e.to_port), (&e.from, &e.from_port)),
-            graphing_model::Arrow::Forward => (pa, pb, (&e.from, &e.from_port), (&e.to, &e.to_port)),
+        let (src, dst) = match e.arrow {
+            graphing_model::Arrow::Back => ((e.to.clone(), pb), (e.from.clone(), pa)),
+            graphing_model::Arrow::Forward => ((e.from.clone(), pa), (e.to.clone(), pb)),
             _ => continue,
         };
-        let end = |(n, p): (&String, &Option<String>)| format!("{n}.{}", p.as_deref().unwrap_or_default());
-        if src.dir != PinDir::Out {
-            out.push(Problem { id: e.id.clone(), message: format!("`{}` is an input; wires leave from outputs", end(src_end)) });
+        let end = |(n, p): &(String, &Pin)| format!("{n}.{}", p.name);
+        let problem = |message: String| Problem { id: e.id.clone(), message };
+        if src.1.dir != PinDir::Out {
+            a.problems.push(problem(format!("`{}` is an input; wires leave from outputs", end(&src))));
             continue;
         }
-        if dst.dir != PinDir::In {
-            out.push(Problem { id: e.id.clone(), message: format!("`{}` is an output; wires arrive at inputs", end(dst_end)) });
+        if dst.1.dir != PinDir::In {
+            a.problems.push(problem(format!("`{}` is an output; wires arrive at inputs", end(&dst))));
             continue;
         }
-        if src.exec() != dst.exec() {
-            out.push(Problem { id: e.id.clone(), message: format!("`{}` and `{}` mix execution and data", end(src_end), end(dst_end)) });
+        if src.1.exec() != dst.1.exec() {
+            a.problems.push(problem(format!("`{}` and `{}` mix execution and data", end(&src), end(&dst))));
             continue;
         }
-        let loose = |t: &Option<String>| t.as_deref().is_none_or(|t| matches!(t, "any" | "wildcard"));
-        if !src.exec() && !loose(&src.ty) && !loose(&dst.ty) && src.ty != dst.ty {
-            out.push(Problem {
-                id: e.id.clone(),
-                message: format!("`{}` gives {} but `{}` takes {}", end(src_end), src.ty.as_deref().unwrap_or_default(), end(dst_end), dst.ty.as_deref().unwrap_or_default()),
-            });
-            continue;
-        }
-        let key = |(n, p): (&String, &Option<String>)| (n.clone(), p.clone().unwrap_or_default());
-        if src.exec() {
-            from.entry(key(src_end)).or_default().push(e.id.clone());
+        if src.1.exec() {
+            from.entry((src.0.clone(), src.1.name.clone())).or_default().push(e.id.clone());
         } else {
-            into.entry(key(dst_end)).or_default().push(e.id.clone());
+            if !dst.1.many {
+                into.entry((dst.0.clone(), dst.1.name.clone())).or_default().push(e.id.clone());
+            }
+            typed.push((e.id.clone(), src, dst));
+        }
+    }
+    // Type variables: a wire joins the sets at both ends, or gives one a type.
+    for (id, (sn, sp), (dn, dp)) in &typed {
+        let term = |vars: &mut Vars, n: &str, p: &Pin| p.ty.as_deref().filter(|t| is_var(t)).map(|t| vars.var(n, t));
+        let (sv, dv) = (term(&mut vars, sn, sp), term(&mut vars, dn, dp));
+        let clash = match (sv, dv, &sp.ty, &dp.ty) {
+            (Some(x), Some(y), _, _) => vars.join(x, y).err().map(|(x, y)| format!("this wire would make one type both {x} and {y}")),
+            (Some(x), None, _, Some(t)) if !matches!(t.as_str(), "any" | "wildcard") => {
+                vars.bind(x, t).err().map(|had| format!("`{sn}.{}` is {had} here, but `{dn}.{}` takes {t}", sp.name, dp.name))
+            }
+            (None, Some(y), Some(t), _) if !matches!(t.as_str(), "any" | "wildcard") => {
+                vars.bind(y, t).err().map(|had| format!("`{dn}.{}` is {had} here, but `{sn}.{}` gives {t}", dp.name, sp.name))
+            }
+            _ => None,
+        };
+        if let Some(message) = clash {
+            a.problems.push(Problem { id: id.clone(), message });
+        }
+    }
+    // Then every wire's settled types must fit, subtypes allowed.
+    let mut settled = |n: &str, p: &Pin| match p.ty.as_deref() {
+        Some(t) if is_var(t) => vars.get(n, t),
+        other => other.map(str::to_string),
+    };
+    for (id, (sn, sp), (dn, dp)) in &typed {
+        let (st, dt) = (settled(sn, sp), settled(dn, dp));
+        if let (Some(st), Some(dt)) = (&st, &dt)
+            && !assignable(st, dt, &up)
+            && !a.problems.iter().any(|p| &p.id == id)
+        {
+            a.problems.push(Problem { id: id.clone(), message: format!("`{sn}.{}` gives {st} but `{dn}.{}` takes {dt}", sp.name, dp.name) });
+        }
+    }
+    for (node, list) in &pins_of {
+        for p in list {
+            if let Some(t) = p.ty.as_deref().filter(|t| is_var(t))
+                && let Some(ty) = settled(node, p).filter(|r| r != t)
+            {
+                a.resolved.insert((node.to_string(), p.name.clone(), p.dir), ty);
+            }
+            // A required input needs a wire or a value of its own.
+            let wired = a.wires.get(&(node.to_string(), p.name.clone(), p.dir)).copied().unwrap_or(0);
+            if p.required && p.dir == PinDir::In && wired == 0 && p.default.is_none() {
+                a.problems.push(Problem { id: node.to_string(), message: format!("`{node}.{}` needs a wire or a default", p.name) });
+            }
         }
     }
     for ((node, pin), wires) in into.iter().filter(|(_, w)| w.len() > 1) {
         for id in &wires[1..] {
-            out.push(Problem { id: id.clone(), message: format!("`{node}.{pin}` takes one wire") });
+            a.problems.push(Problem { id: id.clone(), message: format!("`{node}.{pin}` takes one wire (list it in `many` to take more)") });
         }
     }
     for ((node, pin), wires) in from.iter().filter(|(_, w)| w.len() > 1) {
         for id in &wires[1..] {
-            out.push(Problem { id: id.clone(), message: format!("`{node}.{pin}` leads one way; add a sequence to branch") });
+            a.problems.push(Problem { id: id.clone(), message: format!("`{node}.{pin}` leads one way; add a sequence to branch") });
         }
     }
     if acyclic(d) {
-        out.extend(loops(d, &pins_of));
+        a.problems.extend(loops(d, &pins_of));
     }
-    out.sort_by(|a, b| a.id.cmp(&b.id).then(a.message.cmp(&b.message)));
-    out.dedup();
-    out
+    a.problems.sort_by(|x, y| x.id.cmp(&y.id).then(x.message.cmp(&y.message)));
+    a.problems.dedup();
+    a
 }
 
 /// Edges on a loop, ignoring execution wires (Blueprint lets those loop).
@@ -399,9 +630,9 @@ mod tests {
     #[test]
     fn inputs_face_the_inflow() {
         let list = vec![
-            Pin { name: "a".into(), ty: None, dir: PinDir::In, side: None },
-            Pin { name: "b".into(), ty: None, dir: PinDir::In, side: None },
-            Pin { name: "out".into(), ty: None, dir: PinDir::Out, side: None },
+            Pin::new("a", None, PinDir::In),
+            Pin::new("b", None, PinDir::In),
+            Pin::new("out", None, PinDir::Out),
         ];
         let r = Rect::new(0.0, 0.0, 200.0, 100.0);
         let right = place(r, &list, Flow::Right);
@@ -490,6 +721,69 @@ mod tests {
         assert_eq!(tops.len(), 3);
         assert!((tops[1] - n.rect.size.w / 2.0).abs() < 1e-9);
         assert!(n.ports.iter().any(|p| p.name == "y" && p.side == Bottom && p.at.y == n.rect.origin.y + n.rect.size.h));
+    }
+
+    fn analysis(src: &str) -> (Analysis, Vec<String>) {
+        let doc = Document::parse(src);
+        assert!(doc.diags().is_empty(), "{:?}", doc.diags());
+        let a = analyze(doc.diagram());
+        let msgs = a.problems.iter().map(|p| format!("{}: {}", p.id, p.message)).collect();
+        (a, msgs)
+    }
+
+    #[test]
+    fn type_variables_settle_from_the_wires() {
+        let src = "use graph\nx: graph.variable { out: [value: float] }\ny: graph.variable { out: [value: float] }\npick: graph.variable { out: [value: bool] }\nsel: graph.select\nshow: graph.pure { in: [v: float] }\nx.value -> sel.a\ny.value -> sel.b\npick.value -> sel.pick\nsel.result -> show.v\n";
+        let (a, msgs) = analysis(src);
+        assert!(msgs.is_empty(), "{msgs:?}");
+        // Every `T` on the select node is float now, the output included.
+        assert_eq!(a.resolved.get(&("sel".into(), "result".into(), PinDir::Out)).map(String::as_str), Some("float"));
+        // Feeding it a bool on the other side clashes, on the wire that does it.
+        let (_, msgs) = analysis(&src.replace("y: graph.variable { out: [value: float] }", "y: graph.variable { out: [value: bool] }"));
+        assert!(msgs.iter().any(|m| m.starts_with("y->sel") && m.contains("float")), "{msgs:?}");
+        // Variables belong to their node: two selects can settle differently.
+        let two = "use graph\nf: graph.variable { out: [value: float] }\nb: graph.variable { out: [value: bool] }\ns1: graph.select\ns2: graph.select\nf.value -> s1.a\nb.value -> s2.a\n";
+        let (a, msgs) = analysis(two);
+        assert!(msgs.is_empty(), "{msgs:?}");
+        assert_eq!(a.resolved.get(&("s2".into(), "b".into(), PinDir::In)).map(String::as_str), Some("bool"));
+        // A chain of generic nodes carries the type through.
+        let chain = "use graph\nf: graph.variable { out: [value: int] }\ns1: graph.select\ns2: graph.select\nf.value -> s1.a\ns1.result -> s2.a\n";
+        let (a, _) = analysis(chain);
+        assert_eq!(a.resolved.get(&("s2".into(), "result".into(), PinDir::Out)).map(String::as_str), Some("int"));
+    }
+
+    #[test]
+    fn subtypes_fit_where_their_supertype_is_wanted() {
+        let src = "diagram { types: [Pawn: Actor, Actor: Object] }\np: { out: [it: Pawn] }\nuse_actor: { in: [who: Actor] }\nuse_object: { in: [what: Object] }\nuse_pawn: { in: [who: Pawn] }\nobj: { out: [it: Object] }\np.it -> use_actor.who\np.it -> use_object.what\nobj.it -> use_pawn.who\n";
+        let (_, msgs) = analysis(src);
+        assert_eq!(msgs, ["obj->use_pawn: `obj.it` gives Object but `use_pawn.who` takes Pawn"]);
+    }
+
+    #[test]
+    fn pin_details_defaults_required_and_many() {
+        let src = "join: { in: [parts: text, sep: text, size: int], out: [all: text], many: [parts], defaults: [sep: \", \"], required: [sep, size], docs: [size: \"Most items\"] }\na: { out: [t: text] }\nb: { out: [t: text] }\na.t -> join.parts\nb.t -> join.parts\n";
+        let (a, msgs) = analysis(src);
+        // Many wires into `parts` are fine; `size` has neither wire nor default.
+        assert_eq!(msgs, ["join: `join.size` needs a wire or a default"]);
+        assert_eq!(a.wires.get(&("join".into(), "parts".into(), PinDir::In)), Some(&2));
+        let doc = Document::parse(src);
+        let list = pins(doc.diagram(), doc.diagram().node("join").unwrap());
+        let sep = list.iter().find(|p| p.name == "sep").unwrap();
+        assert_eq!(sep.caption(), "sep = , ");
+        assert_eq!(list.iter().find(|p| p.name == "size").unwrap().doc.as_deref(), Some("Most items"));
+    }
+
+    #[test]
+    fn stencil_pins_grow_with_their_settings() {
+        let doc = Document::parse("use graph\nseq: graph.sequence { outputs: 4 }\nsw: graph.switch { cases: [red, green, blue] }\narr: graph.make-array\n");
+        let d = doc.diagram();
+        let names = |id: &str, dir: PinDir| pins(d, d.node(id).unwrap()).into_iter().filter(|p| p.dir == dir).map(|p| p.name).collect::<Vec<_>>();
+        assert_eq!(names("seq", PinDir::Out), ["then 0", "then 1", "then 2", "then 3"]);
+        assert_eq!(names("sw", PinDir::Out), ["red", "green", "blue", "default"]);
+        assert_eq!(names("arr", PinDir::In), ["[0]", "[1]"]);
+        // The node's own list replaces the stencil's.
+        let doc = Document::parse("use graph\nseq: graph.sequence { out: [first: exec] }\n");
+        assert_eq!(pins(doc.diagram(), doc.diagram().node("seq").unwrap()).iter().filter(|p| p.dir == PinDir::Out).count(), 1);
     }
 }
 

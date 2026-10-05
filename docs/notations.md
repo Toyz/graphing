@@ -76,6 +76,36 @@ x.value -> add.a
   loop is a problem. Execution wires may loop back, as in Blueprint. Any
   diagram can ask for this with `acyclic: true`.
 
+Wiring on the canvas: drag from a pin to another pin, or onto a node to use
+its first free pin that fits, or onto empty canvas for a new node of the
+same kind, wired. While dragging, pins that would take the wire are
+ringed and the rest fade. The wire is always written output to input,
+whichever end you start from. A data input (or an execution output) that
+already has a wire hands it over to the new one, in one undo step; a wire
+that cannot be made is refused with the reason in the status bar.
+
+Typing goes further than names:
+
+- **Type variables.** A type that is one capital letter (`T`, `K`, `T2`)
+  belongs to its node and the wires decide it: wire a float into a
+  `select`'s `a: T` and its `b` and `result` become float too, shown in
+  float's color and in the inspector as `T = float`. Two different types
+  meeting in one `T` is a problem on the wire that does it.
+- **Subtypes.** `diagram { types: [Pawn: Actor, Actor: Object] }` (or a
+  pack's `types`) lets a `Pawn` go where an `Actor` or `Object` is taken.
+- **Pin details**, by pin name: `defaults: [lo: 0]` is the value an unwired
+  input uses, shown beside it; `required: [v]` must be wired or have a
+  default; `many: [items]` takes any number of wires; `docs: [hi: "Top
+  speed"]` explains it in the inspector.
+- **Pins that follow settings.** A stencil can repeat pins: the graph
+  pack's `sequence` has as many `then N` outputs as its `outputs` says,
+  `switch` one per item of `cases`, `make-array` as many `[N]` inputs as
+  `inputs`. A node's own `in` or `out` list replaces its stencil's.
+
+The inspector lists a node's pins with their settled types, wire counts
+and details. None of that is stored: types and counts are worked out from
+the wires each time, so the file holds only what was chosen.
+
 ## Around the packs
 
 1. One example per notation in `examples/notations/`, also offered as

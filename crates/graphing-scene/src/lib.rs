@@ -667,7 +667,8 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
     // Outer groups paint first.
     scene.groups.sort_by(|a, b| (b.rect.size.w * b.rect.size.h).total_cmp(&(a.rect.size.w * a.rect.size.h)));
 
-    place_ports(d, &mut scene);
+    let wiring = pins::analyze(d);
+    place_ports(d, &mut scene, &wiring);
     // Sequence diagrams: messages between lifelines run straight across, one
     // row each, in source order.
     let mut message_row = 0usize;
@@ -751,7 +752,7 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
             let pin = pa.as_ref().or(pb.as_ref()).and_then(|p| p.pin.clone());
             // Pins already show which way a wire runs: no arrowheads. Data
             // wires take their type's color, execution wires the line color.
-            let typed = pin.filter(|p| !p.exec()).map(|p| pins::color(p.ty.as_deref()));
+            let typed = pin.filter(|p| !p.exec()).map(|p| pins::color(p.shown_type()));
             scene.edges.push(EdgeLine {
                 id: e.id.clone(),
                 points: pins::wire(start, pa.map(|p| p.side), end, pb.map(|p| p.side)),
@@ -791,7 +792,7 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
             problem: false,
         });
     }
-    scene.problems = pins::problems(d);
+    scene.problems = wiring.problems;
     for e in &mut scene.edges {
         e.problem = scene.problems.iter().any(|p| p.id == e.id);
     }
@@ -849,7 +850,7 @@ fn port_tip(p: &PortBox) -> Point {
 
 /// Ports used by edges (and declared in a `ports` list) go on the side that
 /// faces what they connect to, spread evenly along it.
-fn place_ports(d: &Diagram, scene: &mut Scene) {
+fn place_ports(d: &Diagram, scene: &mut Scene, wiring: &pins::Analysis) {
     // Node-graph pins have fixed places: inputs on the inflow side.
     let flow = notation::flow(d);
     let mut pinned = std::collections::HashSet::new();
@@ -860,7 +861,9 @@ fn place_ports(d: &Diagram, scene: &mut Scene) {
         }
         let Some(nb) = scene.nodes.iter_mut().find(|b| b.id == n.id) else { continue };
         for (p, (at, side)) in list.iter().zip(pins::place(nb.rect, &list, flow)) {
-            nb.ports.push(PortBox { name: p.name.clone(), at, side, pin: Some(p.clone()) });
+            let key = (n.id.clone(), p.name.clone(), p.dir);
+            let (resolved, wired) = (wiring.resolved.get(&key).cloned(), wiring.wires.get(&key).copied().unwrap_or(0));
+            nb.ports.push(PortBox { name: p.name.clone(), at, side, pin: Some(pins::Pin { resolved, wired, ..p.clone() }) });
         }
         pinned.insert(n.id.clone());
     }

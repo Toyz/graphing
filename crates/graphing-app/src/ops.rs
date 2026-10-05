@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use graphing_dsl::Document;
 use graphing_model::{Arrow, Diagram, Edge, Group, Node, Op, Placement, Point, Rect, Size, Value};
+use graphing_scene::pins::PinDir;
 use graphing_scene::{Scene, snap};
 
 /// Smallest `{prefix}{n}` id not used by any node, group or edge.
@@ -47,6 +48,77 @@ pub fn add_edge_ports(d: &Diagram, from: (&str, Option<&str>), to: (&str, Option
         ..Default::default()
     };
     Op::AddEdge { edge, index: d.edges.len() }
+}
+
+/// One end of a wire: node, pin, and which way the pin faces.
+pub type PinEnd<'a> = (&'a str, &'a str, PinDir);
+
+/// Wire two pins, in whichever order they were picked: from the output to
+/// the input. A data input (unless it takes `many`) or an execution output
+/// already wired lets go of the old wire, in the same undo step. `Err`
+/// says why the wire cannot be made.
+pub fn wire(d: &Diagram, a: PinEnd, b: PinEnd) -> Result<Op, String> {
+    if a.2 == b.2 {
+        return Err(if a.2 == PinDir::In { "both ends are inputs; wire an output to an input".into() } else { "both ends are outputs; wire an output to an input".into() });
+    }
+    let (src, dst) = if a.2 == PinDir::Out { (a, b) } else { (b, a) };
+    if src.0 == dst.0 {
+        return Err("a node cannot wire to itself".into());
+    }
+    let pin = |(node, name, dir): PinEnd| d.node(node).and_then(|n| graphing_scene::pins::pins(d, n).into_iter().find(|p| p.name == name && p.dir == dir));
+    let (Some(sp), Some(dp)) = (pin(src), pin(dst)) else { return Err("no such pin".into()) };
+    // Which pin an edge end means: the source end is the output.
+    type End<'e> = (&'e str, Option<&'e str>);
+    fn ends(e: &Edge) -> Option<(End<'_>, End<'_>)> {
+        match e.arrow {
+            Arrow::Back => Some(((&e.to, e.to_port.as_deref()), (&e.from, e.from_port.as_deref()))),
+            Arrow::Forward => Some(((&e.from, e.from_port.as_deref()), (&e.to, e.to_port.as_deref()))),
+            _ => None,
+        }
+    }
+    let at = |end: (&str, Option<&str>), p: PinEnd| end.0 == p.0 && end.1 == Some(p.1);
+    if d.edges.iter().filter_map(ends).any(|(s, t)| at(s, src) && at(t, dst)) {
+        return Err("already wired".into());
+    }
+    let mut ops: Vec<Op> = d
+        .edges
+        .iter()
+        .filter(|e| ends(e).is_some_and(|(s, t)| (!dp.exec() && !dp.many && at(t, dst)) || (sp.exec() && at(s, src))))
+        .map(|e| Op::RemoveEdge { id: e.id.clone() })
+        .collect();
+    let mut probe = d.clone();
+    probe.apply(&Op::Batch(ops.clone()));
+    let edge = Edge {
+        id: edge_key(&probe, src.0, dst.0),
+        from: src.0.into(),
+        to: dst.0.into(),
+        from_port: Some(src.1.into()),
+        to_port: Some(dst.1.into()),
+        arrow: Arrow::Forward,
+        ..Default::default()
+    };
+    let id = edge.id.clone();
+    ops.push(Op::AddEdge { edge, index: probe.edges.len() });
+    probe.apply(ops.last().expect("pushed"));
+    if let Some(p) = graphing_scene::pins::problems(&probe).into_iter().find(|p| p.id == id) {
+        return Err(p.message);
+    }
+    Ok(Op::Batch(ops))
+}
+
+/// The pin of `node` a wire from `from` would go to when dropped on the
+/// node's body: one that fits, unwired ones first, in the node's order.
+pub fn best_pin(d: &Diagram, from: PinEnd, node: &str) -> Option<(String, PinDir)> {
+    let n = d.node(node)?;
+    let wiring = graphing_scene::pins::analyze(d);
+    let want = if from.2 == PinDir::Out { PinDir::In } else { PinDir::Out };
+    let mut fitting: Vec<(usize, String)> = graphing_scene::pins::pins(d, n)
+        .into_iter()
+        .filter(|p| p.dir == want && wire(d, from, (node, &p.name, want)).is_ok())
+        .map(|p| (wiring.wires.get(&(node.to_string(), p.name.clone(), want)).copied().unwrap_or(0), p.name))
+        .collect();
+    fitting.sort_by_key(|(wired, _)| usize::from(*wired > 0));
+    fitting.into_iter().next().map(|(_, name)| (name, want))
 }
 
 /// Every port a node has: declared in `ports` (`name : Type`) or used by a
@@ -700,4 +772,65 @@ mod tests {
         doc.apply(&same_size(&scene, doc.diagram(), &ids(&["a", "c"])).unwrap()).unwrap();
         assert_eq!(doc.diagram().layout["a"].size, Some(Size::new(300.0, 90.0)));
     }
+
+    const GRAPH: &str = "use graph\nbegin: graph.event\nx: graph.variable { out: [value: float] }\nflag: graph.variable { out: [value: bool] }\nadd: graph.pure { in: [a: float, b: float], out: [sum: float] }\nlog: graph.function\nlog2: graph.function\n";
+
+    #[test]
+    fn wires_run_output_to_input_whichever_end_is_picked() {
+        let mut doc = Document::parse(GRAPH);
+        // Picked input first: still written output -> input.
+        let op = wire(doc.diagram(), ("add", "a", PinDir::In), ("x", "value", PinDir::Out)).unwrap();
+        doc.apply(&op).unwrap();
+        let e = doc.diagram().edge("x->add").unwrap();
+        assert_eq!((e.from_port.as_deref(), e.to_port.as_deref(), e.arrow), (Some("value"), Some("a"), Arrow::Forward));
+        assert!(doc.source().contains("x.value -> add.a"), "{}", doc.source());
+        assert!(graphing_scene::pins::problems(doc.diagram()).is_empty());
+    }
+
+    #[test]
+    fn wires_that_cannot_be_are_refused_with_a_reason() {
+        let d = Document::parse(GRAPH);
+        let d = d.diagram();
+        let why = |a, b| wire(d, a, b).unwrap_err();
+        assert!(why(("x", "value", PinDir::Out), ("flag", "value", PinDir::Out)).contains("both ends are outputs"));
+        assert!(why(("flag", "value", PinDir::Out), ("add", "a", PinDir::In)).contains("gives bool"));
+        assert!(why(("begin", "exec", PinDir::Out), ("add", "a", PinDir::In)).contains("mix execution and data"));
+        assert!(why(("add", "sum", PinDir::Out), ("add", "a", PinDir::In)).contains("itself"));
+    }
+
+    #[test]
+    fn a_new_wire_takes_over_a_one_wire_pin_in_one_step() {
+        let mut doc = Document::parse(GRAPH);
+        doc.apply(&wire(doc.diagram(), ("x", "value", PinDir::Out), ("add", "a", PinDir::In)).unwrap()).unwrap();
+        let y = Document::parse("y: { out: [v: float] }\n");
+        doc.apply(&Op::AddNode { node: y.diagram().nodes[0].clone(), index: 9 }).unwrap();
+        // A second wire into `add.a` replaces the first.
+        let op = wire(doc.diagram(), ("y", "v", PinDir::Out), ("add", "a", PinDir::In)).unwrap();
+        doc.apply(&op).unwrap();
+        let into: Vec<&str> = doc.diagram().edges.iter().filter(|e| e.to == "add").map(|e| e.from.as_str()).collect();
+        assert_eq!(into, ["y"]);
+        // An execution output leads one way: rewiring moves it.
+        doc.apply(&wire(doc.diagram(), ("begin", "exec", PinDir::Out), ("log", "exec", PinDir::In)).unwrap()).unwrap();
+        doc.apply(&wire(doc.diagram(), ("begin", "exec", PinDir::Out), ("log2", "exec", PinDir::In)).unwrap()).unwrap();
+        let out: Vec<&str> = doc.diagram().edges.iter().filter(|e| e.from == "begin").map(|e| e.to.as_str()).collect();
+        assert_eq!(out, ["log2"]);
+        assert!(graphing_scene::pins::problems(doc.diagram()).is_empty(), "{}", doc.source());
+        // Wiring the same pins twice says so.
+        assert_eq!(wire(doc.diagram(), ("begin", "exec", PinDir::Out), ("log2", "exec", PinDir::In)).unwrap_err(), "already wired");
+    }
+
+    #[test]
+    fn dropping_on_a_node_finds_the_pin_that_fits() {
+        let mut doc = Document::parse(GRAPH);
+        let d = doc.diagram();
+        assert_eq!(best_pin(d, ("x", "value", PinDir::Out), "add"), Some(("a".into(), PinDir::In)));
+        assert_eq!(best_pin(d, ("flag", "value", PinDir::Out), "add"), None);
+        assert_eq!(best_pin(d, ("begin", "exec", PinDir::Out), "log"), Some(("exec".into(), PinDir::In)));
+        // Unwired pins come first.
+        doc.apply(&wire(doc.diagram(), ("x", "value", PinDir::Out), ("add", "a", PinDir::In)).unwrap()).unwrap();
+        assert_eq!(best_pin(doc.diagram(), ("x", "value", PinDir::Out), "add"), Some(("b".into(), PinDir::In)));
+        // From an input, the node's fitting output.
+        assert_eq!(best_pin(doc.diagram(), ("add", "b", PinDir::In), "x"), Some(("value".into(), PinDir::Out)));
+    }
 }
+

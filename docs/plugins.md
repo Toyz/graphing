@@ -91,6 +91,22 @@ filled-diamond circle`, and the crow's foot ends `one one-only many zero-one
 one-many zero-many`), `dashed` and an optional `stereotype`; files use
 them as `a -> b { kind: publishes }`. A pack loaded again replaces itself.
 
+Node-graph stencils can list pins, plain (`"name: type"`) or repeated by a
+count or over a list prop, and a pack can declare subtypes:
+
+```json
+{ "name": "sequence", "title": "Sequence", "outline": "rect",
+  "pins": { "in": ["exec"],
+            "out": [{ "name": "then {i}", "type": "exec", "count": "outputs", "default": 2 }] } },
+{ "name": "switch", "title": "Switch", "outline": "rect",
+  "pins": { "in": ["exec", "selection: string"],
+            "out": [{ "name": "{item}", "type": "exec", "each": "cases" }, "default: exec"] } }
+```
+
+`"types": { "Pawn": "Actor", "Actor": "Object" }` at the top of a pack makes
+each type fit where its supertype is taken. See `notations.md` for how
+pins, type variables (`T`) and wiring checks behave.
+
 Kind names are unique within a pack, but two packs may share one (C4 and
 SysML both have `async`). `kind: c4.async` names one exactly; a bare
 `async` means the first pack in the diagram's `use` list that has it, else

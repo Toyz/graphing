@@ -123,7 +123,8 @@ enum Drag {
         regroup: bool,
     },
     Marquee { start: WPoint, current: WPoint, base: Vec<String> },
-    Link { from: String, from_port: Option<String>, current: WPoint },
+    /// `from_dir` is set when the drag starts at a node-graph pin.
+    Link { from: String, from_port: Option<String>, from_dir: Option<graphing_scene::pins::PinDir>, current: WPoint },
     Resize { id: String, anchor: WPoint, current: WPoint },
 }
 
@@ -936,10 +937,10 @@ impl DiagramView {
         }
         // A port square: connect from that port.
         let port_tol = self.tol(HANDLE_HIT).max(graphing_scene::PORT / 2.0);
-        if let Some((node, port)) = scene.nodes.iter().rev().find_map(|n| {
-            n.ports.iter().find(|p| (p.at.x - world.x).abs() <= port_tol && (p.at.y - world.y).abs() <= port_tol).map(|p| (n.id.clone(), p.name.clone()))
+        if let Some((node, port, dir)) = scene.nodes.iter().rev().find_map(|n| {
+            n.ports.iter().find(|p| (p.at.x - world.x).abs() <= port_tol && (p.at.y - world.y).abs() <= port_tol).map(|p| (n.id.clone(), p.name.clone(), p.pin.as_ref().map(|q| q.dir)))
         }) {
-            self.drag = Some(Drag::Link { from: node, from_port: Some(port), current: world });
+            self.drag = Some(Drag::Link { from: node, from_port: Some(port), from_dir: dir, current: world });
             cx.notify();
             return;
         }
@@ -948,7 +949,7 @@ impl DiagramView {
             && let Some(r) = scene.rect_of(&h)
             && scene::ports(r).iter().any(|p| (p.x - world.x).hypot(p.y - world.y) <= self.tol(HANDLE_HIT))
         {
-            self.drag = Some(Drag::Link { from: h, from_port: None, current: world });
+            self.drag = Some(Drag::Link { from: h, from_port: None, from_dir: None, current: world });
             cx.notify();
             return;
         }
@@ -1250,7 +1251,8 @@ impl DiagramView {
                     self.apply(Op::Batch(ops), cx);
                 }
             }
-            Drag::Link { from, from_port, current } => {
+            Drag::Link { from, from_port: Some(pin), from_dir: Some(dir), current } => self.drop_wire(&from, &pin, dir, current, window, cx),
+            Drag::Link { from, from_port, current, .. } => {
                 let scene = self.scene();
                 let tol = self.tol(HANDLE_HIT).max(graphing_scene::PORT / 2.0);
                 let to_port = |to: &str| {
@@ -1546,10 +1548,33 @@ impl DiagramView {
         let mut o = Overlay { hover: self.hover.clone(), ..Default::default() };
         match &self.drag {
             Some(Drag::Marquee { start, current, .. }) => o.marquee = Some(scene::rect_from(*start, *current)),
-            Some(Drag::Link { from, from_port, current }) => {
+            Some(Drag::Link { from, from_port, from_dir, current }) => {
                 o.link = Some((from.clone(), *current));
-                o.link_start = from_port.as_ref().and_then(|p| self.scene().port(from, p)).map(|p| p.at);
+                let scene = self.scene();
+                let start = from_port.as_ref().and_then(|p| match from_dir {
+                    Some(dir) => scene.port_toward(from, p, *dir),
+                    None => scene.port(from, p),
+                });
+                o.link_start = start.as_ref().map(|p| p.at);
                 o.hover = Some(from.clone());
+                // From a pin: the wire curves out of it, and pins it could
+                // go to are ringed (the rest dimmed).
+                if let (Some(start), Some(_)) = (&start, from_dir)
+                    && let Some(src) = &start.pin
+                {
+                    o.link_side = Some(start.side);
+                    let d = self.doc.diagram();
+                    for n in scene.nodes.iter().filter(|n| &n.id != from) {
+                        for p in &n.ports {
+                            let Some(q) = &p.pin else { continue };
+                            if q.dir == src.dir {
+                                continue;
+                            }
+                            let (a, b) = if src.dir == graphing_scene::pins::PinDir::Out { (src, q) } else { (q, src) };
+                            o.pin_targets.push((p.at, graphing_scene::pins::fits(d, a, b)));
+                        }
+                    }
+                }
             }
             Some(Drag::Move { preview, .. }) => {
                 o.hover = None;
@@ -1559,6 +1584,57 @@ impl DiagramView {
             _ => {}
         }
         o
+    }
+
+    /// Finish a wire dragged from pin `pin` (facing `dir`) of `from` at
+    /// `at`: onto a pin, onto a node (its best pin), or onto empty canvas
+    /// (a new node like `from`, wired). A wire that cannot be says why.
+    fn drop_wire(&mut self, from: &str, pin: &str, dir: graphing_scene::pins::PinDir, at: WPoint, window: &mut Window, cx: &mut Context<Self>) {
+        let scene = self.scene();
+        let tol = self.tol(HANDLE_HIT).max(graphing_scene::pins::PIN_R + 2.0);
+        let start = (from, pin, dir);
+        let on_pin = scene.nodes.iter().rev().filter(|n| n.id != from).find_map(|n| {
+            n.ports.iter().find(|p| (p.at.x - at.x).abs() <= tol && (p.at.y - at.y).abs() <= tol).and_then(|p| Some((n.id.clone(), p.name.clone(), p.pin.as_ref()?.dir)))
+        });
+        let d = self.doc.diagram();
+        let result = match (on_pin, scene.hit(at)) {
+            (Some((node, name, to_dir)), _) => ops::wire(d, start, (&node, &name, to_dir)),
+            (None, Some(Hit::Node(node))) if node != from => match ops::best_pin(d, start, &node) {
+                Some((name, to_dir)) => ops::wire(d, start, (&node, &name, to_dir)),
+                // A node without pins: a plain line, still output to input.
+                None if scene.nodes.iter().find(|n| n.id == node).is_some_and(|n| n.ports.iter().all(|p| p.pin.is_none())) => {
+                    let (a, b) = if dir == graphing_scene::pins::PinDir::Out { ((from, Some(pin)), (node.as_str(), None)) } else { ((node.as_str(), None), (from, Some(pin))) };
+                    let mut op = ops::add_edge_ports(d, a, b);
+                    if let Op::AddEdge { edge, .. } = &mut op {
+                        edge.arrow = graphing_model::Arrow::Forward;
+                    }
+                    Ok(op)
+                }
+                None => Err(format!("nothing on `{node}` fits `{from}.{pin}`")),
+            },
+            (None, Some(_)) => return,
+            (None, None) => {
+                // Empty canvas: a node like this one, wired where it fits.
+                let at = WPoint::new(at.x - 70.0, at.y - 30.0);
+                let stencil = d.node(from).and_then(|n| n.stencil.clone());
+                let (id, add) = ops::add_node(d, stencil.as_deref(), at);
+                let mut probe = d.clone();
+                probe.apply(&add);
+                let wired = ops::best_pin(&probe, start, &id).and_then(|(name, to_dir)| ops::wire(&probe, start, (&id, &name, to_dir)).ok());
+                let op = Op::Batch(std::iter::once(add).chain(wired).collect());
+                if self.apply(op, cx) {
+                    self.selected = vec![id.clone()];
+                    self.start_rename(&id, window, cx);
+                }
+                return;
+            }
+        };
+        match result {
+            Ok(op) => {
+                self.apply(op, cx);
+            }
+            Err(why) => self.set_status(format!("can't wire: {why}"), cx),
+        }
     }
 
     /// Where `id`'s label paints and how, so the editor types it in place

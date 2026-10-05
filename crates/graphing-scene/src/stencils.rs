@@ -216,6 +216,68 @@ struct RawStencil {
     /// Drawn by a notation renderer instead of an outline: `wave`.
     #[serde(default)]
     render: Option<String>,
+    /// Node-graph pins a node of this shape starts with.
+    #[serde(default)]
+    pins: Option<PinTemplates>,
+}
+
+/// A stencil's pins: `"name: type"` each, or an object that repeats one
+/// by a count (`{"name": "then {i}", "type": "exec", "count": "outputs",
+/// "default": 2}`) or over a list prop (`{"name": "{item}", "type": "exec",
+/// "each": "cases"}`), so a sequence or a switch grows pins as it is set.
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+pub struct PinTemplates {
+    #[serde(default, rename = "in")]
+    pub ins: Vec<PinTemplate>,
+    #[serde(default, rename = "out")]
+    pub outs: Vec<PinTemplate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum PinTemplate {
+    /// `"name"` or `"name: type"`.
+    Plain(String),
+    Repeat {
+        name: String,
+        #[serde(default, rename = "type")]
+        ty: Option<String>,
+        /// Prop holding how many (`outputs: 3`).
+        #[serde(default)]
+        count: Option<String>,
+        /// How many when the node does not say.
+        #[serde(default)]
+        default: Option<usize>,
+        /// List prop with one pin per item (`cases: [red, green]`).
+        #[serde(default)]
+        each: Option<String>,
+    },
+}
+
+impl PinTemplates {
+    /// `list` written out for a node whose props `prop` reads: `{i}` counts
+    /// from 0, `{item}` is the list item.
+    pub fn expand(&self, list: &[PinTemplate], prop: &dyn Fn(&str) -> Option<Value>) -> Vec<(String, Option<String>)> {
+        let mut out = Vec::new();
+        for t in list {
+            match t {
+                PinTemplate::Plain(text) => match text.split_once(':') {
+                    Some((n, ty)) => out.push((n.trim().to_string(), Some(ty.trim().to_string()))),
+                    None => out.push((text.trim().to_string(), None)),
+                },
+                PinTemplate::Repeat { name, ty, count, default, each } => {
+                    if let Some(key) = each {
+                        let items = prop(key).map(|v| v.as_list().map_or_else(|| vec![v.text()], |l| l.iter().map(Value::text).collect())).unwrap_or_default();
+                        out.extend(items.into_iter().map(|it| (name.replace("{item}", &it), ty.clone())));
+                    } else {
+                        let n = count.as_deref().and_then(prop).and_then(|v| v.text().parse::<f64>().ok()).map_or(default.unwrap_or(1), |n| n.clamp(0.0, 64.0) as usize);
+                        out.extend((0..n).map(|i| (name.replace("{i}", &i.to_string()), ty.clone())));
+                    }
+                }
+            }
+        }
+        out
+    }
 }
 
 /// One shape, resolved.
@@ -254,6 +316,8 @@ pub struct StencilDef {
     pub notes: bool,
     /// A notation renderer in place of the outline (`wave` for timing).
     pub render: Option<String>,
+    /// Node-graph pins a node of this shape starts with.
+    pub pins: Option<PinTemplates>,
 }
 
 impl StencilDef {
@@ -367,6 +431,9 @@ struct RawPack {
     diagram_kinds: Vec<DiagramKindDef>,
     #[serde(default)]
     group_kinds: Vec<GroupKindDef>,
+    /// Node-graph subtypes: `{"Pawn": "Actor", "Actor": "Object"}`.
+    #[serde(default)]
+    types: HashMap<String, String>,
 }
 
 /// A pack's identity, for listings.
@@ -415,6 +482,8 @@ pub struct Registry {
     pub diagram_kinds: Vec<DiagramKindDef>,
     pub group_kinds: Vec<GroupKindDef>,
     pub packs: Vec<PackInfo>,
+    /// Node-graph subtypes from every pack: type -> its supertype.
+    pub types: HashMap<String, String>,
 }
 
 impl Registry {
@@ -491,6 +560,7 @@ impl Registry {
                     label_area: s.label_area,
                     notes: s.notes,
                     render: s.render,
+                    pins: s.pins,
                 },
             );
         }
@@ -518,6 +588,7 @@ impl Registry {
             k.pack = raw.id.clone();
             k
         }));
+        self.types.extend(raw.types);
         self.packs.push(PackInfo { id: raw.id.clone(), name: raw.name, version: raw.version, source: source.to_string(), icon: raw.icon, description: raw.description });
         Ok(raw.id)
     }

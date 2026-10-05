@@ -1118,7 +1118,7 @@ impl Kit<'_> {
     /// color, its name inside the node.
     fn pin(&self, s: &mut String, p: &PortBox, pin: &pins::Pin) {
         let (c, r) = (p.at, pins::PIN_R);
-        let color = if pin.exec() { hex(self.t.edge) } else { hex(pins::color(pin.ty.as_deref())) };
+        let color = if pin.exec() { hex(self.t.edge) } else { hex(pins::color(pin.shown_type())) };
         if pin.exec() {
             let pts = match p.side {
                 Side::Left | Side::Right => [(c.x - r, c.y - r), (c.x + r, c.y), (c.x - r, c.y + r)],
@@ -1129,7 +1129,8 @@ impl Kit<'_> {
         } else {
             let _ = writeln!(s, r#"<circle cx="{}" cy="{}" r="{}" fill="{color}" stroke="{}"/>"#, n(c.x), n(c.y), n(r), hex(self.t.bg));
         }
-        if pin.label().is_empty() {
+        let caption = pin.caption();
+        if caption.is_empty() {
             return;
         }
         let gap = r + 6.0;
@@ -1146,7 +1147,7 @@ impl Kit<'_> {
             n(y),
             n(pins::PIN_PT),
             hex(self.t.text),
-            esc(pin.label())
+            esc(&caption)
         );
     }
 

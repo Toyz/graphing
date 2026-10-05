@@ -115,6 +115,7 @@ impl Writer<'_> {
             2 => (*self.r.pick(&["#fff", "#3b5bdb", "#11223344"])).to_string(),
             3 => (*self.r.pick(&["dashed", "solid", "sysml.flow"])).to_string(),
             4 => crate::print::fmt_str(self.r.pick(LABELS)),
+            5 if self.r.chance(50) => "[exec, a: float, b: \"x\", c: [1, 2]]".to_string(),
             _ => "[1, \"two\", three]".to_string(),
         }
     }
@@ -309,12 +310,13 @@ fn op(r: &mut Rng, d: &Diagram) -> Option<Op> {
         _ => group(r),
     };
     let label = |r: &mut Rng| (!r.chance(25)).then(|| r.pick(LABELS).to_string());
-    let value = |r: &mut Rng| match r.below(5) {
+    let value = |r: &mut Rng| match r.below(6) {
         0 => Value::Num(r.below(300) as f64),
         1 => Value::Color("#abcdef".into()),
         2 => Value::Ident("dashed".into()),
         3 => Value::Str(r.pick(LABELS).to_string()),
-        _ => Value::List(vec![Value::Num(1.0), Value::Str("x".into())]),
+        4 => Value::List(vec![Value::Num(1.0), Value::Str("x".into())]),
+        _ => Value::List(vec![Value::Ident("exec".into()), Value::Pair("a".into(), Box::new(Value::Ident("float".into())))]),
     };
     let key = |r: &mut Rng| r.pick(&["fill", "stroke", "line", "kind", "w", "note"]).to_string();
     let fresh = |r: &mut Rng| format!("x{}", r.below(1000));

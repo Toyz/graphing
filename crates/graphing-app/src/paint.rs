@@ -109,6 +109,10 @@ pub struct Overlay {
     pub link: Option<(String, graphing_model::Point)>,
     /// Where that connection starts when it leaves from a port.
     pub link_start: Option<graphing_model::Point>,
+    /// The side of the pin a wire is dragged from: the preview curves.
+    pub link_side: Option<Side>,
+    /// Pins a dragged wire could go to (`true`) or not.
+    pub pin_targets: Vec<(graphing_model::Point, bool)>,
     /// The group dragged nodes will be in when dropped.
     pub drop_group: Option<String>,
 }
@@ -324,15 +328,38 @@ fn overlay(f: &Frame, window: &mut Window) {
     if let Some((from, at)) = &f.overlay.link
         && let Some((r, shape)) = f.scene.outline_of(from)
     {
-        let start = f.view.pt(f.overlay.link_start.unwrap_or_else(|| graphing_scene::boundary(shape, r, *at)));
-        let end = f.view.pt(*at);
+        let from = f.overlay.link_start.unwrap_or_else(|| graphing_scene::boundary(shape, r, *at));
+        let (start, end) = (f.view.pt(from), f.view.pt(*at));
         let mut pb = PathBuilder::stroke(px(1.5)).dash_array(&[px(5.0), px(4.0)]);
         pb.move_to(start);
-        pb.line_to(end);
+        match f.overlay.link_side {
+            // A wire from a pin curves like the one it will become.
+            Some(side) => {
+                for p in pins::wire(from, Some(side), *at, None).into_iter().skip(1) {
+                    pb.line_to(f.view.pt(p));
+                }
+            }
+            None => pb.line_to(end),
+        }
         if let Ok(path) = pb.build() {
             window.paint_path(path, accent);
         }
-        arrowhead(start, end, f.view.zoom, accent, window);
+        if f.overlay.link_side.is_none() {
+            arrowhead(start, end, f.view.zoom, accent, window);
+        }
+    }
+    for (p, ok) in &f.overlay.pin_targets {
+        let c = f.view.pt(*p);
+        let r = f.view.len(pins::PIN_R as f32);
+        if *ok {
+            let ring = r + px(3.0);
+            let b = Bounds { origin: point(c.x - ring, c.y - ring), size: size(ring * 2.0, ring * 2.0) };
+            window.paint_quad(quad(b, ring, gpui_kit::transparent_black(), px(2.0), accent, BorderStyle::default()));
+        } else {
+            // Wash out what will not take this wire.
+            let b = Bounds { origin: point(c.x - r - px(1.0), c.y - r - px(1.0)), size: size(r * 2.0 + px(2.0), r * 2.0 + px(2.0)) };
+            window.paint_quad(quad(b, r + px(1.0), f.palette.bg.opacity(0.7), px(0.), f.palette.bg, BorderStyle::default()));
+        }
     }
     if let Some(id) = &f.overlay.drop_group
         && let Some(r) = f.scene.rect_of(id)
@@ -788,7 +815,7 @@ fn node_header(f: &Frame, n: &NodeBox, b: Bounds<Pixels>, stroke: Hsla, window: 
 fn pin(f: &Frame, p: &PortBox, pin: &pins::Pin, window: &mut Window, cx: &mut App) {
     let c = f.view.pt(p.at);
     let r = f.view.len(pins::PIN_R as f32);
-    let color = if pin.exec() { f.palette.edge } else { f.rgb(pins::color(pin.ty.as_deref())) };
+    let color = if pin.exec() { f.palette.edge } else { f.rgb(pins::color(pin.shown_type())) };
     if pin.exec() {
         // Points along the flow: right on the sides, down on top and bottom.
         let tri = match p.side {
@@ -805,10 +832,11 @@ fn pin(f: &Frame, p: &PortBox, pin: &pins::Pin, window: &mut Window, cx: &mut Ap
         window.paint_quad(quad(dot, r, color, px(1.0), f.palette.bg, BorderStyle::default()));
     }
     let size_px = pins::PIN_PT as f32 * f.view.zoom;
-    if size_px < 4.0 || pin.label().is_empty() {
+    let caption = pin.caption();
+    if size_px < 4.0 || caption.is_empty() {
         return;
     }
-    let line = shape_text(pin.label(), size_px, f.palette.text, Face::Sans, f, window);
+    let line = shape_text(&caption, size_px, f.palette.text, Face::Sans, f, window);
     let lh = px(size_px * 1.3);
     let gap = r + f.view.len(6.0);
     let origin = match p.side {

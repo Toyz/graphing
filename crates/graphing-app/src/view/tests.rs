@@ -556,3 +556,34 @@ fn the_minimap_shows_when_things_are_out_of_view(cx: &mut TestAppContext) {
     let after = view.read_with(cx, |v, _| v.cam.get().offset);
     assert_ne!(before, after);
 }
+
+const GRAPH: &str = "use graph\nx: graph.variable { out: [value: float] }\nflag: graph.variable { out: [value: bool] }\nadd: graph.pure { in: [a: float, b: float], out: [sum: float] }\n\nlayout {\n  x 0 0\n  flag 0 200\n  add 400 0\n}\n";
+
+/// Where pin `name` (facing `dir`) of `node` is on screen.
+fn pin_at(view: &Entity<DiagramView>, cx: &mut VisualTestContext, node: &str, name: &str, dir: graphing_scene::pins::PinDir) -> Point<Pixels> {
+    let p = view.read_with(cx, |v, _| v.scene().port_toward(node, name, dir).expect("pin").at);
+    at(view, cx, p.x, p.y)
+}
+
+#[gpui_kit::test]
+fn dragging_between_pins_wires_them(cx: &mut TestAppContext) {
+    use graphing_scene::pins::PinDir;
+    let (view, cx) = open(cx, GRAPH);
+    // Pin to pin, picked input first: written output -> input.
+    let (from, to) = (pin_at(&view, cx, "add", "a", PinDir::In), pin_at(&view, cx, "x", "value", PinDir::Out));
+    drag(cx, from, to, MouseButton::Left);
+    assert!(source(&view, cx).contains("x.value -> add.a"), "{}", source(&view, cx));
+    // Onto the node's body: the next free pin that fits.
+    let (from, to) = (pin_at(&view, cx, "x", "value", PinDir::Out), at(&view, cx, 470.0, 30.0));
+    drag(cx, from, to, MouseButton::Left);
+    assert!(source(&view, cx).contains("x.value -> add.b"), "{}", source(&view, cx));
+    // A bool into a float: refused, and the status says why.
+    let (from, to) = (pin_at(&view, cx, "flag", "value", PinDir::Out), pin_at(&view, cx, "add", "a", PinDir::In));
+    drag(cx, from, to, MouseButton::Left);
+    assert!(!source(&view, cx).contains("flag.value"));
+    assert!(view.read_with(cx, |v, _| v.status().contains("gives bool")), "{}", view.read_with(cx, |v, _| v.status().to_string()));
+    // Each wire is one undo step.
+    cx.simulate_keystrokes("secondary-z");
+    assert!(!source(&view, cx).contains("add.b"));
+    assert!(source(&view, cx).contains("add.a"));
+}

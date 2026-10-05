@@ -432,7 +432,11 @@ impl Workspace {
         shown.insert("ports".into());
         let ported = schema.iter().any(|p| p.key == "ports");
         let ports = crate::ops::ports_of(d, id);
-        if ported || !ports.is_empty() {
+        // A node-graph node shows its pins; wire ends there are pins, not ports.
+        let pins = graphing_scene::pins::pins(d, &n);
+        if !pins.is_empty() {
+            body = body.child(self.pins_row(id, d, &pins, cx));
+        } else if ported || !ports.is_empty() {
             body = body.child(self.ports_row(id, &ports, window, cx));
         }
         let mut missing = Vec::new();
@@ -723,6 +727,70 @@ impl Workspace {
         let add = self.field(id, "addport", "", window, cx);
         list = list.child(kit::text_input(&add));
         self.row(Lucide::Cable, &format!("Ports  {}", ports.len()), None, list, cx)
+    }
+
+    /// A node-graph node's pins as they stand: type (what a type variable
+    /// settled on), wires, and the details set for each. Read only; the
+    /// `in`, `out` and detail lists below edit them.
+    fn pins_row(&mut self, id: &str, d: &Diagram, pins: &[graphing_scene::pins::Pin], cx: &mut Context<Self>) -> Div {
+        use graphing_scene::pins::{self as gp, PinDir};
+        let k = cx.ui();
+        let wiring = gp::analyze(d);
+        let mut list = div().flex().flex_col().gap(GAP_1);
+        for (dir, title) in [(PinDir::In, "In"), (PinDir::Out, "Out")] {
+            let of: Vec<&gp::Pin> = pins.iter().filter(|p| p.dir == dir).collect();
+            if of.is_empty() {
+                continue;
+            }
+            list = list.child(kit::caption(title, cx));
+            for p in of {
+                let key = (id.to_string(), p.name.clone(), p.dir);
+                let resolved = wiring.resolved.get(&key);
+                let wires = wiring.wires.get(&key).copied().unwrap_or(0);
+                let ty = match (&p.ty, resolved) {
+                    (Some(t), Some(r)) => format!("{t} = {r}"),
+                    (Some(t), None) => t.clone(),
+                    (None, _) if p.exec() => "exec".into(),
+                    (None, _) => "any".into(),
+                };
+                let color = gp::color(resolved.map(String::as_str).or(p.shown_type()));
+                let mut notes = Vec::new();
+                if let Some(v) = &p.default {
+                    notes.push(format!("default {v}"));
+                }
+                if p.required {
+                    notes.push("required".into());
+                }
+                if p.many {
+                    notes.push("many".into());
+                }
+                let marker = if p.exec() {
+                    div().flex_none().child(kit::icon_named("Play").size(ICON_SM).text_color(k.text_muted))
+                } else {
+                    div().flex_none().size(ICON_SM).rounded_full().bg(graphing_ui::tokens::swatch(color))
+                };
+                list = list.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(GAP_2)
+                                .child(marker)
+                                .child(div().flex_1().min_w_0().text_size(TEXT_SM).text_color(k.text).overflow_hidden().text_ellipsis().whitespace_nowrap().child(p.name.clone()))
+                                .child(div().flex_none().font_family(cx.mono()).text_size(TEXT_XS).text_color(k.text_faint).child(ty))
+                                .child(div().flex_none().w(HIT_LG).text_right().text_size(TEXT_XS).text_color(k.text_faint).child(if wires == 0 { String::new() } else { format!("{wires}\u{d7}") })),
+                        )
+                        .when(!notes.is_empty() || p.doc.is_some(), |el| {
+                            let line = notes.into_iter().chain(p.doc.clone()).collect::<Vec<_>>().join(" \u{b7} ");
+                            el.child(div().pl(ICON_SM + GAP_2).text_size(TEXT_XS).text_color(k.text_muted).child(line))
+                        }),
+                );
+            }
+        }
+        self.row(Lucide::Workflow, &format!("Pins  {}", pins.len()), None, list, cx)
     }
 
     fn diagram_props(&mut self, d: &Diagram, diags: &[(usize, String)], window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
