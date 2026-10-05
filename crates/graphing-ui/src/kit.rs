@@ -833,20 +833,65 @@ impl RenderOnce for TabItem {
 
 // ---- status bar ----
 
-/// A transient message, shown floating over the window corner.
-pub fn toast(msg: impl Into<SharedString>, cx: &App) -> Div {
+/// How a notice reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoticeTone {
+    Info,
+    /// Work going on (an export); shows its progress.
+    Working,
+    Success,
+    Error,
+}
+
+/// A notice: icon by tone, a title, an optional second line, a progress
+/// bar while work goes on, buttons for what to do next, and a close
+/// button. `actions` are already-built buttons (`TextButton`s).
+#[allow(clippy::too_many_arguments)]
+pub fn notice(id: impl Into<ElementId>, tone: NoticeTone, title: impl Into<SharedString>, detail: Option<SharedString>, progress: Option<f32>, actions: Vec<AnyElement>, on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static, cx: &App) -> gpui_kit::Stateful<Div> {
     let k = cx.ui();
+    let (glyph, color) = match tone {
+        NoticeTone::Info => (Lucide::Info, k.accent),
+        NoticeTone::Working => (Lucide::LoaderCircle, k.accent),
+        NoticeTone::Success => (Lucide::CircleCheck, k.success),
+        NoticeTone::Error => (Lucide::CircleX, k.danger),
+    };
+    let id = id.into();
     raised(cx)
+        .id(id.clone())
+        .w(NOTICE_W)
         .flex()
-        .items_center()
+        .flex_col()
         .gap(GAP_2)
-        .px(GAP_3)
-        .py(GAP_2)
-        .max_w(MENU_W * 1.6)
-        .text_size(TEXT_SM)
-        .text_color(k.text)
-        .child(icon(Lucide::Info, ICON_SM, k.accent))
-        .child(div().min_w_0().child(msg.into()))
+        .p(GAP_3)
+        .child(
+            div()
+                .flex()
+                .items_start()
+                .gap(GAP_2)
+                .child(div().flex_none().pt(GAP_0).child(icon(glyph, ICON_SM, color)))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap(GAP_0)
+                        .child(div().text_size(TEXT_SM).text_color(k.heading).child(title.into()))
+                        .when_some(detail, |d, t| d.child(div().text_size(TEXT_XS).text_color(k.text_muted).overflow_hidden().text_ellipsis().whitespace_nowrap().child(t))),
+                )
+                .child(IconButton::new((id.clone(), "close"), Lucide::X).small().tooltip("Dismiss").on_click(on_close)),
+        )
+        .when_some(progress, |d, f| {
+            d.child(
+                div()
+                    .h(PROGRESS_H)
+                    .w_full()
+                    .rounded_full()
+                    .bg(k.hover)
+                    .child(div().h_full().rounded_full().bg(k.accent).w(gpui_kit::relative(f.clamp(0.02, 1.0)))),
+            )
+        })
+        .when(!actions.is_empty(), |d| d.child(div().flex().justify_end().gap(GAP_2).children(actions)))
 }
 
 /// A small count pill, pinned to the corner of the element it decorates.

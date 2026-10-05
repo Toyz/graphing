@@ -222,7 +222,8 @@ pub fn paint(f: &Frame, window: &mut Window, cx: &mut App) {
                 // Along a pack outline; the node then covers its inner half.
                 Some(cmds) => path_glow(&ff, &n.id, cmds, window),
                 None => {
-                    let round = if matches!(n.shape, Shape::Ellipse | Shape::Initial | Shape::Final) { n.rect.size.w.min(n.rect.size.h) as f32 / 2.0 } else { 10.0 };
+                    // The glow hugs the box's own corners.
+                    let round = if matches!(n.shape, Shape::Ellipse | Shape::Initial | Shape::Final) { n.rect.size.w.min(n.rect.size.h) as f32 / 2.0 } else { corner(n.shape, ff.scene.technical) };
                     glow(&ff, &n.id, ff.view.rect(n.rect), ff.view.len(round), window);
                 }
             }
@@ -233,6 +234,16 @@ pub fn paint(f: &Frame, window: &mut Window, cx: &mut App) {
 }
 
 /// A soft accent ring around a highlighted element.
+/// Corner radius of a box shape, in diagram units.
+fn corner(shape: Shape, technical: bool) -> f32 {
+    match (shape, technical) {
+        (Shape::Rounded, true) => 10.0,
+        (Shape::Rounded, false) => 14.0,
+        (_, true) => 2.0,
+        (_, false) => 6.0,
+    }
+}
+
 fn glow(f: &Frame, id: &str, b: Bounds<Pixels>, radius: Pixels, window: &mut Window) {
     let g = f.glow_of(id);
     if g <= 0.005 {
@@ -274,12 +285,17 @@ fn edge_glow(f: &Frame, e: &EdgeLine, window: &mut Window) {
 
 /// Dots running along a flowing edge.
 fn flow_dots(f: &Frame, e: &EdgeLine, window: &mut Window) {
+    use graphing_scene::anim::{FLOW_CLEAR, FLOW_GAP, trim};
     let Some(off) = f.anim.and_then(|s| s.flow.get(&e.id)) else { return };
-    let r = f.view.len(3.5);
-    for p in graphing_scene::anim::flow_dots(&e.points, *off, graphing_scene::anim::FLOW_GAP) {
+    // A typed wire carries beads of its own color; other lines the accent.
+    let color = e.stroke.map_or(f.palette.accent, |c| f.rgb(c));
+    let (r, halo) = (f.view.len(3.5), f.view.len(6.5));
+    for p in graphing_scene::anim::flow_dots(&trim(&e.points, FLOW_CLEAR), *off, FLOW_GAP) {
         let c = f.view.pt(p);
+        let soft = Bounds { origin: point(c.x - halo, c.y - halo), size: size(halo * 2.0, halo * 2.0) };
+        window.paint_quad(quad(soft, halo, color.opacity(0.25 * f.fade), px(0.), color, BorderStyle::default()));
         let b = Bounds { origin: point(c.x - r, c.y - r), size: size(r * 2.0, r * 2.0) };
-        window.paint_quad(quad(b, r, f.palette.accent, px(0.), f.palette.accent, BorderStyle::default()));
+        window.paint_quad(quad(b, r, color, px(0.), color, BorderStyle::default()));
     }
 }
 
@@ -642,12 +658,7 @@ fn node(f: &Frame, n: &NodeBox, window: &mut Window, cx: &mut App) {
         }
         Shape::Bar => window.paint_quad(quad(b, f.view.len(1.5), ink, px(0.), ink, BorderStyle::default())),
         Shape::Rect | Shape::Rounded | Shape::Block => {
-            let r = match (n.shape, tech) {
-                (Shape::Rounded, true) => f.view.len(10.0),
-                (Shape::Rounded, false) => f.view.len(14.0),
-                (_, true) => f.view.len(2.0),
-                (_, false) => f.view.len(6.0),
-            };
+            let r = f.view.len(corner(n.shape, tech));
             window.paint_quad(quad(b, r, fill, width, stroke, BorderStyle::default()));
         }
         Shape::Lifeline => {
@@ -797,7 +808,7 @@ fn structured_text(f: &Frame, n: &NodeBox, b: Bounds<Pixels>, ink: Hsla, stroke:
 fn node_header(f: &Frame, n: &NodeBox, b: Bounds<Pixels>, stroke: Hsla, window: &mut Window, cx: &mut App) {
     let band = Bounds { origin: b.origin, size: size(b.size.width, f.view.len(pins::PIN_TOP as f32).min(b.size.height)) };
     let color = n.stroke.map_or(f.palette.accent.opacity(0.85 * f.fade), |c| f.rgb(c));
-    let r = f.view.len(if n.shape == Shape::Rounded { 14.0 } else { 6.0 });
+    let r = f.view.len(corner(n.shape, f.scene.technical));
     window.paint_quad(quad(band, gpui_kit::Corners { top_left: r, top_right: r, bottom_left: px(0.), bottom_right: px(0.) }, color, px(0.), stroke, BorderStyle::default()));
     let size_px = HEADER_PT * f.view.zoom;
     if size_px < 4.0 {

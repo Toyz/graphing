@@ -436,7 +436,10 @@ impl Workspace {
                     move |_, _, _, cx| view.update(cx, |v, cx| v.stop_animation(cx))
                 })))
             })
-            .child(IconButton::new("seq-export", Lucide::Download).tooltip("Export animation (GIF, WebM, PNG, SVG)").action(Box::new(crate::ExportAnimation)))
+            .child(IconButton::new("seq-export", Lucide::Download).tooltip("Export animation: GIF, WebM, PNG or SVG").on_click(cx.listener(|ws, ev: &gpui_kit::ClickEvent, _, cx| {
+                ws.export_menu = Some(ev.position());
+                cx.notify();
+            })))
             .when(steps.is_empty(), |d| {
                 d.child(IconButton::new("seq-close", Lucide::X).tooltip("Hide sequence").on_click(cx.listener(|ws, _, _, cx| {
                     ws.sequence_open = false;
@@ -444,7 +447,39 @@ impl Workspace {
                 })))
             });
         let menu = self.render_step_menu(view, cx);
-        Some(div().relative().child(strip).children(menu).into_any_element())
+        let export = self.render_export_menu(cx);
+        Some(div().relative().child(strip).children(menu).children(export).into_any_element())
+    }
+
+    /// The export button's menu: one row per animation format.
+    fn render_export_menu(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let at = self.export_menu?;
+        let mut rows = vec![MenuRow::Caption("Export the animation as".into())];
+        for (id, label, icon, ext) in crate::ANIMATION_FORMATS {
+            let hint = match id {
+                "gif" => "Plays anywhere",
+                "webm" => "Small, for video players",
+                "apng" => "Full color, for browsers",
+                _ => "Sharp at any size, for the web",
+            };
+            rows.push(
+                MenuRow::item(label, cx.listener(move |ws, _, window, cx| {
+                    ws.export_menu = None;
+                    window.dispatch_action(Box::new(crate::ExportAnimationAs { format: id.to_string() }), cx);
+                    cx.notify();
+                }))
+                .icon(icon)
+                .detail(format!(".{ext}"))
+                .description(hint),
+            );
+        }
+        let surface = menu::menu_surface("export-menu", rows, cx).on_mouse_down_out(cx.listener(|ws, _, _, cx| {
+            ws.export_menu = None;
+            cx.notify();
+        }));
+        // Opens upward from the button, over the canvas.
+        let placed = gpui_kit::anchored().position(at).anchor(gpui_kit::Anchor::BottomLeft).snap_to_window().child(menu::animate(surface, "export-menu-anim"));
+        Some(gpui_kit::deferred(placed).with_priority(2).into_any_element())
     }
 
     /// Right-click menu of a step chip.

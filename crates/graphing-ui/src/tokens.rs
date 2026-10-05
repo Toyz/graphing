@@ -260,6 +260,11 @@ pub const COLOR_SQUARE_H: Pixels = px(132.0);
 pub const COLOR_HUE_H: Pixels = px(12.0);
 pub const COLOR_KNOB: Pixels = px(14.0);
 
+/// A progress bar's track.
+pub const PROGRESS_H: Pixels = px(4.0);
+/// Notices (toasts) at most this wide.
+pub const NOTICE_W: Pixels = px(360.0);
+
 /// Swatch color for painting a cell.
 pub fn swatch(v: u32) -> Hsla {
     c(v)

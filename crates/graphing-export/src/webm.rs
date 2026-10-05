@@ -6,7 +6,8 @@ use rav1e::prelude::*;
 use crate::ExportError;
 
 /// RGBA frames (each `w * h * 4`, shown `ms` milliseconds) as a WebM.
-pub fn encode(w: u32, h: u32, frames: &[(Vec<u8>, u32)], fps: f64) -> Result<Vec<u8>, ExportError> {
+/// `progress` is called once per frame encoded.
+pub fn encode(w: u32, h: u32, frames: &[(Vec<u8>, u32)], fps: f64, progress: &dyn Fn()) -> Result<Vec<u8>, ExportError> {
     let err = |e: &dyn std::fmt::Display| ExportError::Png(format!("video: {e}"));
     // 4:2:0 needs even sides.
     let (ew, eh) = ((w + 1) & !1, (h + 1) & !1);
@@ -48,6 +49,7 @@ pub fn encode(w: u32, h: u32, frames: &[(Vec<u8>, u32)], fps: f64) -> Result<Vec
     };
     // Constant frame rate: a held frame repeats (and costs almost nothing).
     for (rgba, ms) in frames {
+        progress();
         let repeats = ((*ms as f64) / step_ms).round().max(1.0) as usize;
         let (y, u, v) = to_yuv420(rgba, w, h, ew, eh);
         for _ in 0..repeats {
@@ -200,7 +202,7 @@ mod tests {
     #[test]
     fn a_tiny_video_encodes() {
         let frame = |c: u8| (vec![c; 31 * 16 * 4], 100);
-        let webm = encode(31, 16, &[frame(0), frame(255), frame(128)], 10.0).unwrap();
+        let webm = encode(31, 16, &[frame(0), frame(255), frame(128)], 10.0, &|| {}).unwrap();
         assert!(webm.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]));
         assert!(webm.windows(5).any(|w| w == b"V_AV1"));
     }

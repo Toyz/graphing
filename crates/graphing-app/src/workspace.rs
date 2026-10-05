@@ -78,8 +78,8 @@ pub struct Workspace {
     /// Debounces layout writes while a split or dock is dragged.
     layout_gen: usize,
     /// Messages floating over the corner, newest last, each with its id.
-    toasts: Vec<(usize, SharedString)>,
-    toast_seq: usize,
+    pub(crate) notices: Vec<crate::notices::Notice>,
+    pub(crate) notice_seq: usize,
     pub(crate) theme: ThemeChoice,
     pub(crate) settings: Settings,
     /// Settings tab: shortcut search, the action being rebound, key focus.
@@ -92,6 +92,8 @@ pub struct Workspace {
     pub(crate) oss_open: Option<usize>,
     /// Saved blocks, for the Shapes pane.
     pub(crate) blocks: Vec<crate::blocks::Block>,
+    /// The sequence strip's export menu, open at this point.
+    pub(crate) export_menu: Option<gpui_kit::Point<gpui_kit::Pixels>>,
     /// A block tile's right-click menu: block name and where.
     pub(crate) block_menu: Option<(String, gpui_kit::Point<gpui_kit::Pixels>)>,
     /// The pin open in the inspector's pin editor: node, side, name.
@@ -173,8 +175,8 @@ impl Workspace {
             dock,
             tools: HashMap::new(),
             layout_gen: 0,
-            toasts: Vec::new(),
-            toast_seq: 0,
+            notices: Vec::new(),
+            notice_seq: 0,
             theme: settings.theme,
             settings_query,
             recording: None,
@@ -184,6 +186,7 @@ impl Workspace {
             oss_open: None,
             pin_open: None,
             blocks: crate::blocks::list(),
+            export_menu: None,
             block_menu: None,
             color_edit: None,
             confirm: None,
@@ -1092,27 +1095,12 @@ impl Workspace {
         }
     }
 
+    /// A short message in the corner that fades on its own.
     pub(crate) fn toast(&mut self, msg: impl Into<SharedString>, window: &mut Window, cx: &mut Context<Self>) {
         let msg = msg.into();
-        if msg.is_empty() {
-            return;
+        if !msg.is_empty() {
+            self.notice(kit::NoticeTone::Info, msg, None, window, cx);
         }
-        self.toast_seq += 1;
-        let id = self.toast_seq;
-        self.toasts.push((id, msg));
-        if self.toasts.len() > 3 {
-            self.toasts.remove(0);
-        }
-        cx.spawn_in(window, async move |ws, cx| {
-            cx.background_executor().timer(TOAST_FOR).await;
-            ws.update(cx, |ws, cx| {
-                ws.toasts.retain(|(i, _)| *i != id);
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-        cx.notify();
     }
 
     // ---- theme and session ----
@@ -1230,7 +1218,10 @@ impl Workspace {
             ("File", "Import draw.io...", L::FileInput, Box::new(ImportAs { format: "drawio".into() })),
             ("File", "Import SysML v2...", L::FileInput, Box::new(ImportAs { format: "sysml".into() })),
             ("File", "Import Visio...", L::FileInput, Box::new(ImportAs { format: "visio".into() })),
-            ("File", "Export Animation...", L::Clapperboard, Box::new(ExportAnimation)),
+            ("File", "Export Animation as GIF...", L::Clapperboard, Box::new(crate::ExportAnimationAs { format: "gif".into() })),
+            ("File", "Export Animation as WebM...", L::Film, Box::new(crate::ExportAnimationAs { format: "webm".into() })),
+            ("File", "Export Animation as Animated PNG...", L::FileImage, Box::new(crate::ExportAnimationAs { format: "apng".into() })),
+            ("File", "Export Animation as Animated SVG...", L::FileCode, Box::new(crate::ExportAnimationAs { format: "svg".into() })),
             ("File", "Export SVG...", L::FileOutput, Box::new(ExportSvg)),
             ("File", "Export PNG...", L::Image, Box::new(ExportPng)),
             ("File", "Export SysML v2...", L::FileCode, Box::new(ExportSysml)),
@@ -1359,17 +1350,62 @@ impl Workspace {
         let rx = cx.prompt_for_new_path(&dir, Some(&name));
         cx.spawn_in(window, async move |ws, cx| {
             let Ok(Ok(Some(path))) = rx.await else { return };
-            if animate {
-                ws.update_in(cx, |ws, window, cx| ws.toast(format!("rendering {}...", path.display()), window, cx)).ok();
+            let file: SharedString = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().to_string()).into();
+            let folder: Option<SharedString> = path.parent().map(|p| p.display().to_string().into());
+            // A notice that follows the work: frames done, then the result.
+            let progress = animate.then(|| std::sync::Arc::new(graphing_export::Progress::default()));
+            let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let Ok(id) = ws.update_in(cx, |ws, window, cx| {
+                let id = ws.notice(kit::NoticeTone::Working, format!("Exporting {file}"), folder.clone(), window, cx);
+                ws.update_notice(id, |n| n.progress = progress.as_ref().map(|_| 0.0), window, cx);
+                id
+            }) else {
+                return;
+            };
+            if let Some(p) = progress.clone() {
+                let done = done.clone();
+                ws.update_in(cx, |_, window, cx| {
+                    cx.spawn_in(window, async move |ws, cx| {
+                        while !done.load(std::sync::atomic::Ordering::Relaxed) {
+                            cx.background_executor().timer(std::time::Duration::from_millis(120)).await;
+                            let f = p.fraction();
+                            if ws.update_in(cx, |ws, window, cx| ws.update_notice(id, |n| n.progress = n.progress.map(|_| f), window, cx)).is_err() {
+                                break;
+                            }
+                        }
+                    })
+                    .detach();
+                })
+                .ok();
             }
             let target = path.clone();
-            let result = cx.background_executor().spawn(async move { crate::export::write(&src, &assets, base.as_deref(), &target, style) }).await;
+            let result = cx.background_executor().spawn(async move { crate::export::write(&src, &assets, base.as_deref(), &target, style, progress) }).await;
+            done.store(true, std::sync::atomic::Ordering::Relaxed);
             ws.update_in(cx, |ws, window, cx| {
-                let msg = match result {
-                    Ok(()) => format!("exported {}", path.display()),
-                    Err(e) => format!("export failed: {e}"),
-                };
-                ws.toast(msg, window, cx);
+                ws.update_notice(
+                    id,
+                    |n| {
+                        n.progress = None;
+                        match &result {
+                            Ok(()) => {
+                                n.tone = kit::NoticeTone::Success;
+                                n.title = format!("Exported {file}").into();
+                                let (open, reveal) = (path.clone(), path.clone());
+                                n.actions = vec![
+                                    ("Show in folder".into(), Lucide::FolderOpen, std::rc::Rc::new(move |_: &mut Workspace, _: &mut Window, cx: &mut Context<Workspace>| cx.reveal_path(&reveal))),
+                                    ("Open".into(), Lucide::ExternalLink, std::rc::Rc::new(move |_: &mut Workspace, _: &mut Window, cx: &mut Context<Workspace>| cx.open_with_system(&open))),
+                                ];
+                            }
+                            Err(e) => {
+                                n.tone = kit::NoticeTone::Error;
+                                n.title = format!("Could not export {file}").into();
+                                n.detail = Some(e.to_string().into());
+                            }
+                        }
+                    },
+                    window,
+                    cx,
+                );
             })
             .ok();
         })
@@ -1777,6 +1813,7 @@ impl Render for Workspace {
         let confirm = self.render_confirm(cx);
         let templates = self.render_templates(cx);
         let block_menu = self.render_block_menu(cx);
+        let notices = self.render_notices(cx);
         let body = self.dock.clone();
 
         div()
@@ -1822,6 +1859,10 @@ impl Render for Workspace {
             .on_action(cx.listener(|ws, _: &ExportSvg, w, cx| ws.export("svg", false, w, cx)))
             .on_action(cx.listener(|ws, _: &ExportPng, w, cx| ws.export("png", false, w, cx)))
             .on_action(cx.listener(|ws, _: &ExportAnimation, w, cx| ws.export("gif", true, w, cx)))
+            .on_action(cx.listener(|ws, a: &crate::ExportAnimationAs, w, cx| {
+                let ext = crate::ANIMATION_FORMATS.iter().find(|f| f.0 == a.format).map_or("gif", |f| f.3);
+                ws.export(ext, true, w, cx);
+            }))
             .on_action(cx.listener(|ws, _: &NewFromTemplate, w, cx| ws.open_templates(w, cx)))
             .on_action(cx.listener(|ws, _: &PlayAnimation, _, cx| {
                 // Playing needs steps; the strip shows how to make them.
@@ -1885,19 +1926,7 @@ impl Render for Workspace {
             .text_size(TEXT_MD)
             .child(titlebar)
             .child(div().flex_1().min_h_0().child(body))
-            .when(!self.toasts.is_empty(), |d| {
-                d.child(
-                    div()
-                        .absolute()
-                        .right(GAP_4)
-                        .bottom(DOCK_STRIP_H + GAP_4)
-                        .flex()
-                        .flex_col()
-                        .items_end()
-                        .gap(GAP_2)
-                        .children(self.toasts.iter().map(|(_, m)| kit::toast(m.clone(), cx))),
-                )
-            })
+            .children(notices)
             .when_some(confirm, |d, c| d.child(c))
             .when_some(templates, |d, t| d.child(t))
             .children(block_menu)
@@ -1938,6 +1967,3 @@ fn dock_size(side: DockPlacement) -> gpui_kit::Pixels {
         _ => BOTTOM_DOCK_H,
     }
 }
-
-/// How long a toast stays up.
-const TOAST_FOR: std::time::Duration = std::time::Duration::from_millis(3200);

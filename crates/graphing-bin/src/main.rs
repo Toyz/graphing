@@ -186,7 +186,7 @@ fn info(file: &Path) -> anyhow::Result<()> {
 
 fn render(file: &Path, out: &Path, dark: bool, scale: f32, animate: bool) -> anyhow::Result<()> {
     let pkg = load(file)?;
-    graphing_app::export::write(&pkg.doc, &pkg.assets, file.parent(), out, graphing_app::export::Style { dark, scale, animate })
+    graphing_app::export::write(&pkg.doc, &pkg.assets, file.parent(), out, graphing_app::export::Style { dark, scale, animate }, None)
 }
 
 fn import(file: &Path, out: Option<&Path>) -> anyhow::Result<()> {

@@ -61,6 +61,31 @@ impl Workspace {
                 }
             }
             "select" => self.with_view(cx, |v, cx| v.select(arg.split(',').map(str::to_string).collect(), cx)),
+            // `notices` shows one of each: working, done (with actions), failed.
+            "notices" => {
+                use graphing_ui::kit::{Lucide, NoticeTone};
+                let w = self.notice(NoticeTone::Working, "Exporting node-graph.webm", Some("~/Videos".into()), window, cx);
+                self.update_notice(w, |n| n.progress = Some(0.42), window, cx);
+                let ok = self.notice(NoticeTone::Working, "Exported node-graph.gif", Some("~/Pictures".into()), window, cx);
+                self.update_notice(
+                    ok,
+                    |n| {
+                        n.tone = NoticeTone::Success;
+                        let noop: crate::notices::NoticeAct = std::rc::Rc::new(|_, _, _| {});
+                        n.actions = vec![("Show in folder".into(), Lucide::FolderOpen, noop.clone()), ("Open".into(), Lucide::ExternalLink, noop)];
+                    },
+                    window,
+                    cx,
+                );
+                self.notice(NoticeTone::Error, "Could not export node-graph.apng", Some("No space left on device".into()), window, cx);
+            }
+            // `export-menu` opens the sequence strip's export menu.
+            "export-menu" => {
+                self.sequence_open = true;
+                // About where the strip's export button sits.
+                let v = window.viewport_size();
+                self.export_menu = Some(gpui_kit::point(v.width * 0.75, v.height * 0.92));
+            }
             // `save-block:sel` selects `sel` and asks to save it as a block.
             "save-block" => {
                 self.with_view(cx, |v, cx| v.select(arg.split(',').map(str::to_string).collect(), cx));

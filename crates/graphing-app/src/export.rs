@@ -26,7 +26,8 @@ impl Default for Style {
 /// `.svg`, `.png`, `.gif`, `.webm`, `.apng` or `.sysml` (SysML v2 text).
 /// `assets` are its packaged pictures and link snapshots, `base` the folder
 /// of its own file, which pictures and links are relative to.
-pub fn write(src: &str, assets: &BTreeMap<String, Vec<u8>>, base: Option<&Path>, out: &Path, style: Style) -> anyhow::Result<()> {
+/// `progress`, when given, counts frames for an animation.
+pub fn write(src: &str, assets: &BTreeMap<String, Vec<u8>>, base: Option<&Path>, out: &Path, style: Style, progress: Option<std::sync::Arc<graphing_export::Progress>>) -> anyhow::Result<()> {
     let ext = out.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let doc = graphing_dsl::Document::parse(src);
     if ext == "sysml" {
@@ -41,7 +42,7 @@ pub fn write(src: &str, assets: &BTreeMap<String, Vec<u8>>, base: Option<&Path>,
         refs: graphing_export::refs_for(&scene, base, &graphing_export::snapshots(assets)),
         ..Default::default()
     };
-    let anim = AnimOptions { scale: style.scale.min(2.0), ..Default::default() };
+    let anim = AnimOptions { scale: style.scale.min(2.0), progress, ..Default::default() };
     let bytes = match (ext.as_str(), style.animate) {
         ("gif", _) => graphing_export::to_gif(&scene, &opts, &timeline, &anim)?,
         ("webm", _) => graphing_export::to_webm(&scene, &opts, &timeline, &anim)?,

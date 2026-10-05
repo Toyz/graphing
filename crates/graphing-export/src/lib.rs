@@ -518,8 +518,11 @@ fn render(scene: &Scene, opts: &SvgOptions, motion: &Motion, viewport: Option<Re
         motion.layer(s, glow, |s| {
             let _ = writeln!(s, r#"<path d="{d}" fill="none" stroke="{}" stroke-width="9" stroke-opacity="0.35" stroke-linecap="round"/>"#, hex(ACCENT));
         });
-        // Flow: round dots (zero-length dashes) running along the line.
+        // Flow: round dots (zero-length dashes) running along the line,
+        // clear of its ends, in a typed wire's own color.
         let gap = graphing_scene::anim::FLOW_GAP;
+        let d = polyline_d(&graphing_scene::anim::trim(&e.points, graphing_scene::anim::FLOW_CLEAR));
+        let bead = hex(e.stroke.unwrap_or(ACCENT));
         let flowing = |st: &AnimState| if st.flow.contains_key(&e.id) { st.alpha(&e.id) } else { 0.0 };
         match motion {
             Motion::At(st) => {
@@ -528,7 +531,7 @@ fn render(scene: &Scene, opts: &SvgOptions, motion: &Motion, viewport: Option<Re
                         let _ = writeln!(
                             s,
                             r#"<path d="{d}" fill="none" stroke="{}" stroke-width="7" stroke-linecap="round" stroke-dasharray="0 {}" stroke-dashoffset="{}"/>"#,
-                            hex(ACCENT),
+                            bead,
                             n(gap),
                             n(-(off % gap))
                         );
@@ -539,7 +542,7 @@ fn render(scene: &Scene, opts: &SvgOptions, motion: &Motion, viewport: Option<Re
                 let _ = writeln!(
                     s,
                     r#"<path d="{d}" fill="none" stroke="{}" stroke-width="7" stroke-linecap="round" stroke-dasharray="0 {}"><animate attributeName="stroke-dashoffset" values="0;{}" dur="{}s" repeatCount="indefinite"/></path>"#,
-                    hex(ACCENT),
+                    bead,
                     n(gap),
                     n(-gap),
                     n(gap / graphing_scene::anim::FLOW_SPEED)
@@ -1476,7 +1479,7 @@ pub fn to_png(scene: &Scene, opts: &SvgOptions, scale: f32) -> Result<Vec<u8>, E
 }
 
 /// How an animation turns into frames.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct AnimOptions {
     pub fps: f64,
     /// Pixels per diagram unit, before `max_width` caps it.
@@ -1484,11 +1487,44 @@ pub struct AnimOptions {
     pub max_width: u32,
     /// Seconds the last frame holds before the loop starts over.
     pub hold: f64,
+    /// Counts frames rendered and encoded, for a progress bar.
+    pub progress: Option<std::sync::Arc<Progress>>,
 }
 
 impl Default for AnimOptions {
     fn default() -> Self {
-        Self { fps: 15.0, scale: 1.0, max_width: 1280, hold: 1.5 }
+        Self { fps: 15.0, scale: 1.0, max_width: 1280, hold: 1.5, progress: None }
+    }
+}
+
+/// How far an animation export has got: steps done out of all of them
+/// (each frame is rendered, then encoded). Shared with whoever shows it.
+#[derive(Debug, Default)]
+pub struct Progress {
+    done: std::sync::atomic::AtomicUsize,
+    total: std::sync::atomic::AtomicUsize,
+}
+
+impl Progress {
+    /// From 0 to 1; 0 until the work is known.
+    pub fn fraction(&self) -> f32 {
+        use std::sync::atomic::Ordering::Relaxed;
+        let total = self.total.load(Relaxed);
+        if total == 0 { 0.0 } else { (self.done.load(Relaxed) as f32 / total as f32).min(1.0) }
+    }
+
+    fn plan(&self, total: usize) {
+        self.total.store(total, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn tick(&self) {
+        self.done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+fn tick(a: &AnimOptions) {
+    if let Some(p) = &a.progress {
+        p.tick();
     }
 }
 
@@ -1506,7 +1542,13 @@ pub fn frames(scene: &Scene, opts: &SvgOptions, timeline: &Timeline, a: &AnimOpt
     let step_ms = (1000.0 / a.fps.max(1.0)).round() as u32;
     let n = ((timeline.total + a.hold) * a.fps).ceil().max(1.0) as usize;
     let viewport = anim_viewport(scene, timeline);
+    // Rendering every frame, then encoding them (fewer, once held frames
+    // merge; the plan is corrected below).
+    if let Some(p) = &a.progress {
+        p.plan(n * 2);
+    }
     let render_one = |i: usize| -> Result<Rendered, ExportError> {
+        tick(a);
         let t = (i as f64 / a.fps).min(timeline.total);
         let state = timeline.state(t);
         let moved = timeline.scene_for(&state);
@@ -1542,6 +1584,9 @@ pub fn frames(scene: &Scene, opts: &SvgOptions, timeline: &Timeline, a: &AnimOpt
             Some((prev, ms)) if *prev == rgba => *ms += step_ms,
             _ => out.push((rgba, step_ms)),
         }
+    }
+    if let Some(p) = &a.progress {
+        p.plan(n + out.len());
     }
     Ok((w, h, out))
 }
@@ -1605,6 +1650,7 @@ pub fn to_gif(scene: &Scene, opts: &SvgOptions, timeline: &Timeline, a: &AnimOpt
             // Hundredths of a second.
             frame.delay = (ms / 10).clamp(1, u16::MAX as u32) as u16;
             enc.write_frame(&frame).map_err(err)?;
+            tick(a);
         }
     }
     Ok(bytes)
@@ -1614,7 +1660,7 @@ pub fn to_gif(scene: &Scene, opts: &SvgOptions, timeline: &Timeline, a: &AnimOpt
 /// video rather than a GIF.
 pub fn to_webm(scene: &Scene, opts: &SvgOptions, timeline: &Timeline, a: &AnimOptions) -> Result<Vec<u8>, ExportError> {
     let (w, h, frames) = frames(scene, opts, timeline, a)?;
-    webm::encode(w, h, &frames, a.fps)
+    webm::encode(w, h, &frames, a.fps, &|| tick(a))
 }
 
 /// The animation as a looping APNG: full colour, sharper than a GIF.
@@ -1634,6 +1680,7 @@ pub fn to_apng(scene: &Scene, opts: &SvgOptions, timeline: &Timeline, a: &AnimOp
             writer.set_frame_position(x, y).map_err(err)?;
             // Blend over the last frame instead of replacing it.
             writer.set_blend_op(png::BlendOp::Over).map_err(err)?;
+            tick(a);
             writer.set_dispose_op(png::DisposeOp::None).map_err(err)?;
             writer.set_frame_delay(ms.min(u16::MAX as u32) as u16, 1000).map_err(err)?;
             writer.write_image_data(&rgba).map_err(err)?;

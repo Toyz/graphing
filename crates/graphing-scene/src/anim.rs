@@ -57,7 +57,8 @@ pub struct Timeline {
     /// Flowing edges and highlighted ids per step.
     flows: Vec<Vec<String>>,
     glows: Vec<Vec<String>>,
-    /// Camera targets: (second, rect to frame).
+    /// Per step, what drops back: the paths a branch does not take.
+    dims: Vec<Vec<String>>,
     /// Camera moves: start, target, curve, seconds.
     focus: Vec<(f64, Rect, Ease, f64)>,
     /// Everything, for `focus all` and the start.
@@ -219,6 +220,7 @@ impl Timeline {
                 camera = Some(r);
                 t.focus.push((at, r, ease, move_time(Some(cam), r)));
             }
+            t.dims.push(untaken(d, &flows, &glows));
             t.flows.push(flows);
             t.glows.push(glows);
             t.spans.push((at, len, step.title.clone()));
@@ -320,6 +322,11 @@ impl Timeline {
         for id in &self.flows[i] {
             s.flow.insert(id.clone(), into * FLOW_SPEED);
         }
+        // Branches not taken step back while this one plays.
+        for id in &self.dims[i] {
+            let a = s.alpha(id) * (1.0 - (1.0 - UNTAKEN) * envelope);
+            s.alpha.insert(id.clone(), a);
+        }
         for id in &self.glows[i] {
             // A gentle pulse on top of the envelope.
             let pulse = 0.8 + 0.2 * (into * std::f64::consts::TAU / 1.2).cos() as f32;
@@ -356,6 +363,71 @@ fn move_time(from: Option<Rect>, to: Rect) -> f64 {
     (MOVE * (1.0 + 0.6 * pan + 0.4 * zoom)).min(MOVE_MAX)
 }
 
+/// How visible a path the branch does not take stays.
+const UNTAKEN: f32 = 0.3;
+
+/// The paths a step's flow does not take: where it runs along a wire out
+/// of one execution output of a node that has several (a branch, a switch,
+/// a sequence), the wires out of the others and whatever only they lead
+/// to. What the taken path also reaches, or the step itself shows, stays.
+fn untaken(d: &Diagram, flows: &[String], active: &[String]) -> Vec<String> {
+    let exec_outs = |node: &str| -> Vec<String> {
+        d.node(node).map(|n| crate::pins::pins(d, n).into_iter().filter(|p| p.dir == crate::pins::PinDir::Out && p.exec()).map(|p| p.name).collect()).unwrap_or_default()
+    };
+    // Where edges lead, following their arrows.
+    let next = |node: &str| -> Vec<(&str, &str)> {
+        d.edges
+            .iter()
+            .filter_map(|e| match e.arrow {
+                graphing_model::Arrow::Back if e.to == node => Some((e.id.as_str(), e.from.as_str())),
+                graphing_model::Arrow::Back => None,
+                _ if e.from == node => Some((e.id.as_str(), e.to.as_str())),
+                _ => None,
+            })
+            .collect()
+    };
+    // Nodes reachable from `starts`, and the edges walked with where each
+    // leaves from.
+    let reach = |starts: Vec<&str>| -> (HashSet<String>, Vec<(String, String)>) {
+        let (mut nodes, mut edges): (HashSet<String>, Vec<(String, String)>) = Default::default();
+        let mut stack: Vec<&str> = starts;
+        while let Some(n) = stack.pop() {
+            if !nodes.insert(n.to_string()) {
+                continue;
+            }
+            for (e, to) in next(n) {
+                edges.push((e.to_string(), n.to_string()));
+                stack.push(to);
+            }
+        }
+        (nodes, edges)
+    };
+    let mut out: HashSet<String> = HashSet::new();
+    for id in flows {
+        let Some(e) = d.edge(id) else { continue };
+        let (Some(port), graphing_model::Arrow::Forward) = (&e.from_port, e.arrow) else { continue };
+        let outs = exec_outs(&e.from);
+        if outs.len() < 2 || !outs.contains(port) {
+            continue;
+        }
+        let others: Vec<&graphing_model::Edge> = d
+            .edges
+            .iter()
+            .filter(|o| o.from == e.from && o.from_port.as_ref().is_some_and(|p| p != port && outs.contains(p)) && !flows.contains(&o.id))
+            .collect();
+        let (taken, _) = reach(vec![e.to.as_str()]);
+        let (lost_nodes, lost_edges) = reach(others.iter().map(|o| o.to.as_str()).collect());
+        let lost: HashSet<String> = lost_nodes.into_iter().filter(|n| !taken.contains(n) && !active.contains(n)).collect();
+        out.extend(others.iter().map(|o| o.id.clone()));
+        // Wires leaving what is lost go with it; ones from the taken side stay.
+        out.extend(lost_edges.into_iter().filter(|(x, from)| lost.contains(from) && !flows.contains(x)).map(|(x, _)| x));
+        out.extend(lost);
+    }
+    let mut out: Vec<String> = out.into_iter().collect();
+    out.sort();
+    out
+}
+
 /// Whether `outer` holds all of `inner`.
 fn contains(outer: Rect, inner: Rect) -> bool {
     inner.origin.x >= outer.origin.x - 0.5
@@ -377,6 +449,36 @@ fn footprint(scene: &Scene, id: &str) -> Option<Rect> {
 
 /// Points along a polyline every `gap` units, shifted by `offset`: where
 /// the flow dots of an edge are.
+/// How far flow dots keep from a line's ends, so none sits on a pin or an
+/// arrowhead.
+pub const FLOW_CLEAR: f64 = 10.0;
+
+/// `points` with `by` cut off each end (the whole line when it is shorter
+/// than that).
+pub fn trim(points: &[graphing_model::Point], by: f64) -> Vec<graphing_model::Point> {
+    let len: f64 = points.windows(2).map(|w| ((w[1].x - w[0].x).powi(2) + (w[1].y - w[0].y).powi(2)).sqrt()).sum();
+    if len <= by * 2.0 || points.len() < 2 {
+        return points.to_vec();
+    }
+    let at = |dist: f64| {
+        let mut walked = 0.0;
+        for (i, w) in points.windows(2).enumerate() {
+            let l = ((w[1].x - w[0].x).powi(2) + (w[1].y - w[0].y).powi(2)).sqrt();
+            if walked + l >= dist {
+                let t = if l == 0.0 { 0.0 } else { (dist - walked) / l };
+                return (i, graphing_model::Point::new(w[0].x + (w[1].x - w[0].x) * t, w[0].y + (w[1].y - w[0].y) * t));
+            }
+            walked += l;
+        }
+        (points.len() - 2, points[points.len() - 1])
+    };
+    let ((i, a), (j, b)) = (at(by), at(len - by));
+    let mut out = vec![a];
+    out.extend_from_slice(&points[i + 1..=j]);
+    out.push(b);
+    out
+}
+
 pub fn flow_dots(points: &[graphing_model::Point], offset: f64, gap: f64) -> Vec<graphing_model::Point> {
     let mut out = Vec::new();
     let mut next = offset.rem_euclid(gap);
@@ -540,6 +642,28 @@ mod tests {
         let zoom = move_time(Some(here), Rect::new(0.0, 0.0, 1600.0, 1200.0));
         assert!(MOVE < near && near < far && far <= MOVE_MAX, "{near} {far}");
         assert!(zoom > MOVE);
+    }
+
+    #[test]
+    fn the_branch_not_taken_steps_back() {
+        // check: true -> a -> join, false -> b -> join, false also -> c.
+        let src = "use graph\ncheck: graph.branch\na: graph.function\nb: graph.function\nc: graph.function\njoin: graph.function\n\
+            check.true -> a.exec\ncheck.false -> b.exec\na.exec -> join.exec\nb.exec -> join.exec\nb.exec -> c.exec\n\
+            animate {\n  step \"Take true\" 2s {\n    flow check -> a\n  }\n  step \"All\" 1s {\n    focus all\n  }\n}\n";
+        let doc = graphing_dsl::Document::parse(src);
+        assert!(doc.diags().is_empty(), "{:?}", doc.diags());
+        let t = Timeline::new(doc.diagram(), &crate::build(doc.diagram(), &Default::default()));
+        let mid = t.state(1.0);
+        // The false wire, `b` and what only `b` leads to fade back...
+        for id in ["check->b", "b", "c", "b->c"] {
+            assert!(mid.alpha(id) < 0.5, "{id}: {}", mid.alpha(id));
+        }
+        // ...the taken path and where both meet stay bright.
+        for id in ["check->a", "a", "join", "a->join", "check"] {
+            assert!(mid.alpha(id) > 0.99, "{id}: {}", mid.alpha(id));
+        }
+        // The next step brings everything back.
+        assert!(t.state(2.7).alpha("b") > 0.99);
     }
 }
 

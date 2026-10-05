@@ -8,6 +8,7 @@ mod dock;
 pub mod export;
 mod files;
 mod media;
+mod notices;
 mod inspector;
 pub mod keymap;
 mod library;
@@ -123,6 +124,21 @@ actions!(
 pub struct ImportAs {
     pub format: String,
 }
+
+/// Export the animation as one format: `gif`, `webm`, `apng` or `svg`.
+#[derive(Clone, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = graphing)]
+pub struct ExportAnimationAs {
+    pub format: String,
+}
+
+/// Animation formats: action id, menu label, icon, file extension.
+pub(crate) const ANIMATION_FORMATS: [(&str, &str, graphing_ui::kit::Lucide, &str); 4] = [
+    ("gif", "GIF", graphing_ui::kit::Lucide::Image, "gif"),
+    ("webm", "WebM video", graphing_ui::kit::Lucide::Film, "webm"),
+    ("apng", "Animated PNG", graphing_ui::kit::Lucide::FileImage, "png"),
+    ("svg", "Animated SVG", graphing_ui::kit::Lucide::FileCode, "svg"),
+];
 
 /// Run a command a plugin registered.
 #[derive(Clone, PartialEq, Deserialize, JsonSchema, Action)]

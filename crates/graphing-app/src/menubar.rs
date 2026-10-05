@@ -92,7 +92,11 @@ impl Workspace {
                     act("PNG...", L::Image, ExportPng),
                     act("SysML v2...", L::FileCode, ExportSysml),
                     Item::Separator,
-                    act("Animation (GIF, WebM)...", L::Clapperboard, ExportAnimation),
+                    sub(
+                        "Animation",
+                        L::Clapperboard,
+                        crate::ANIMATION_FORMATS.iter().map(|(id, label, icon, _)| act(format!("{label}..."), *icon, crate::ExportAnimationAs { format: id.to_string() })).collect(),
+                    ),
                 ],
             ),
         ];
