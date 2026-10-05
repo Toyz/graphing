@@ -53,9 +53,9 @@ fn drag_writes_layout_and_undo_restores(cx: &mut TestAppContext) {
     assert_eq!(selected, ["a"]);
     assert!(source(&view, cx).contains("  a 0 100\n"), "{}", source(&view, cx));
 
-    cx.simulate_keystrokes("ctrl-z");
+    cx.simulate_keystrokes("secondary-z");
     assert_eq!(source(&view, cx), SRC);
-    cx.simulate_keystrokes("ctrl-shift-z");
+    cx.simulate_keystrokes("secondary-shift-z");
     assert!(source(&view, cx).contains("  a 0 100\n"));
 }
 
@@ -85,7 +85,7 @@ fn marquee_selects_enclosed_nodes(cx: &mut TestAppContext) {
     let (from, to) = (at(&view, cx, -20.0, -20.0), at(&view, cx, 300.0, 100.0));
     drag(cx, from, to, MouseButton::Left);
     assert_eq!(view.read_with(cx, |v, _| v.selected.clone()), ["a"]);
-    cx.simulate_keystrokes("ctrl-a");
+    cx.simulate_keystrokes("secondary-a");
     assert_eq!(view.read_with(cx, |v, _| v.selected.len()), 2);
     cx.simulate_keystrokes("escape");
     assert!(view.read_with(cx, |v, _| v.selected.is_empty()));
@@ -138,12 +138,12 @@ fn copy_paste_and_duplicate(cx: &mut TestAppContext) {
     let (view, cx) = open(cx, SRC);
     let p = at(&view, cx, 60.0, 28.0);
     cx.simulate_click(p, Modifiers::default());
-    cx.simulate_keystrokes("ctrl-c");
-    cx.simulate_keystrokes("ctrl-v");
+    cx.simulate_keystrokes("secondary-c");
+    cx.simulate_keystrokes("secondary-v");
     let src = source(&view, cx);
     assert!(src.contains("a_1: \"A\"") && src.contains("  a_1 20 20\n"), "{src}");
     assert_eq!(view.read_with(cx, |v, _| v.selected.clone()), ["a_1"]);
-    cx.simulate_keystrokes("ctrl-d");
+    cx.simulate_keystrokes("secondary-d");
     assert!(source(&view, cx).contains("  a_2 40 40\n"));
     cx.simulate_keystrokes("shift-right right");
     assert!(source(&view, cx).contains("  a_2 51 40\n"), "{}", source(&view, cx));
@@ -182,11 +182,11 @@ fn group_and_ungroup_keys(cx: &mut TestAppContext) {
     let (view, cx) = open(cx, SRC);
     let empty = at(&view, cx, 200.0, 300.0);
     cx.simulate_click(empty, Modifiers::default());
-    cx.simulate_keystrokes("ctrl-a ctrl-g");
+    cx.simulate_keystrokes("secondary-a secondary-g");
     let src = source(&view, cx);
     assert!(src.contains("group group1 \"Group\" { a b }"), "{src}");
     assert_eq!(view.read_with(cx, |v, _| v.selected.clone()), ["group1"]);
-    cx.simulate_keystrokes("ctrl-shift-g");
+    cx.simulate_keystrokes("secondary-shift-g");
     assert!(!source(&view, cx).contains("group group1"));
 }
 
@@ -219,7 +219,7 @@ fn grouping_then_adding_inside_and_outside(cx: &mut TestAppContext) {
     let b = at(&view, cx, 360.0, 28.0);
     cx.simulate_event(MouseDownEvent { position: b, modifiers: Modifiers::shift(), button: MouseButton::Left, click_count: 1, first_mouse: false });
     cx.simulate_event(MouseUpEvent { position: b, modifiers: Modifiers::shift(), button: MouseButton::Left, click_count: 1 });
-    cx.simulate_keystrokes("ctrl-g");
+    cx.simulate_keystrokes("secondary-g");
     // Outside, between the group and `far`.
     let out = at(&view, cx, 700.0, 500.0);
     dbl(cx, out);
@@ -321,7 +321,7 @@ fn sysml_frame_selects_and_renames_the_diagram(cx: &mut TestAppContext) {
     cx.simulate_event(MouseDownEvent { position: head, modifiers: Modifiers::default(), button: MouseButton::Left, click_count: 2, first_mouse: false });
     cx.simulate_event(MouseUpEvent { position: head, modifiers: Modifiers::default(), button: MouseButton::Left, click_count: 2 });
     assert_eq!(view.read_with(cx, |v, _| v.renaming.clone()).as_deref(), Some(FRAME_ID));
-    cx.simulate_keystrokes("ctrl-a");
+    cx.simulate_keystrokes("secondary-a");
     cx.simulate_input("Test Bench");
     cx.simulate_keystrokes("enter");
     assert!(source(&view, cx).starts_with("diagram \"Test Bench\" { kind: ibd }"), "{}", source(&view, cx));
@@ -360,7 +360,7 @@ fn delete_removes_a_group_with_its_contents(cx: &mut TestAppContext) {
     let d = view.read_with(cx, |v, _| v.doc().diagram().clone());
     assert!(d.groups.is_empty() && d.edges.is_empty(), "{out}");
     assert_eq!(d.nodes.iter().map(|n| n.id.as_str()).collect::<Vec<_>>(), ["c"], "{out}");
-    cx.simulate_keystrokes("ctrl-z");
+    cx.simulate_keystrokes("secondary-z");
     assert_eq!(source(&view, cx), src);
 }
 

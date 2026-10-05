@@ -444,7 +444,7 @@ mod tests {
     fn open(cx: &mut TestAppContext, files: Vec<std::path::PathBuf>) -> (Entity<Workspace>, &mut VisualTestContext) {
         let dir = std::env::temp_dir().join(format!("graphing-dock-test-{}", std::process::id()));
         // SAFETY: tests in this binary that read config all point at this dir.
-        unsafe { std::env::set_var("XDG_CONFIG_HOME", &dir) };
+        unsafe { std::env::set_var("GRAPHING_CONFIG_DIR", &dir) };
         cx.update(|cx| {
             gpui_kit::init(cx);
             crate::keymap::apply(cx, &[]);
@@ -627,8 +627,8 @@ mod tests {
             ws.read_with(cx, |w, cx| w.dock.read(cx).layout(DockPlacement::Center).map_or(0, |t| t.panels().count()))
         };
         assert_eq!(count(&ws, cx), 1);
-        cx.update(|window, cx| ws.update(cx, |w, cx| w.open_path("/tmp/graphing-dock-a.gph".into(), window, cx)));
-        cx.update(|window, cx| ws.update(cx, |w, cx| w.open_path("/tmp/graphing-dock-b.gph".into(), window, cx)));
+        cx.update(|window, cx| ws.update(cx, |w, cx| w.open_path(std::env::temp_dir().join("graphing-dock-a.gph"), window, cx)));
+        cx.update(|window, cx| ws.update(cx, |w, cx| w.open_path(std::env::temp_dir().join("graphing-dock-b.gph"), window, cx)));
         cx.run_until_parked();
         // The pristine untitled tab was replaced by the first file.
         assert_eq!(count(&ws, cx), 2);
@@ -759,7 +759,7 @@ mod tests {
             let el = t.elapsed();
             let end = gpui_kit::point(start.x + gpui_kit::px(steps as f32 * 4.0), start.y);
             cx.simulate_mouse_up(end, gpui_kit::MouseButton::Left, gpui_kit::Modifiers::default());
-            cx.simulate_keystrokes("ctrl-z");
+            cx.simulate_keystrokes("secondary-z");
             println!("{what}: {:?} per move", el / steps);
         }
     }

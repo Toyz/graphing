@@ -253,7 +253,7 @@ impl Workspace {
                     .flex_1()
                     .min_w_0()
                     .text_size(TEXT_SM)
-                    .when_some(current, |d, c| d.font_family("monospace").text_color(k.text).child(hex(c)))
+                    .when_some(current, |d, c| d.font_family(cx.mono()).text_color(k.text).child(hex(c)))
                     .when(current.is_none(), |d| d.text_color(k.text_muted).child("Default")),
             )
             .child(Icon::new(if open { Lucide::ChevronUp } else { Lucide::ChevronDown }).size(ICON_SM).text_color(k.text_faint));

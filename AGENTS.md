@@ -73,12 +73,18 @@ cargo test --workspace -q
 
 ## Settings
 
-- `~/.config/graphing/settings.json` holds user settings: theme, panels,
-  canvas, keybindings. The app rewrites only keys it owns and keeps the rest.
-- `~/.config/graphing/state.json` holds app state (open files, recent files).
-  It is not for users.
+- The config folder is `settings::config_dir()`: `~/.config/graphing` on
+  Linux, `~/Library/Application Support/graphing` on macOS,
+  `%APPDATA%\graphing` on Windows. `GRAPHING_CONFIG_DIR` overrides it; tests
+  set it so they never touch real settings.
+- `settings.json` there holds user settings: theme, panels, canvas,
+  keybindings. The app rewrites only keys it owns and keeps the rest.
+- `state.json` holds app state (open files, recent files). It is not for
+  users.
 - Keybindings:
-  - Defaults are in `crates/graphing-app/src/keymap.rs`.
+  - Defaults are in `crates/graphing-app/src/keymap.rs`. Use `secondary-`
+    (cmd on macOS, ctrl elsewhere) for app shortcuts, never a bare `ctrl-`;
+    simulated keystrokes in tests do the same.
   - User entries go in settings `keybindings` as
     `{"keys","action","context","args"}`; `action: null` unbinds.
   - Actions are addressed by gpui name, such as `graphing::AddShape`.

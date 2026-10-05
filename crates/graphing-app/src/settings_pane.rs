@@ -273,7 +273,7 @@ impl Workspace {
                 let action = c.action.name().to_string();
                 let keys: Vec<keymap::Effective> = eff.iter().filter(|e| e.action == action).cloned().collect();
                 let changed = keys.iter().any(|e| e.user)
-                    || self.settings.keybindings.iter().any(|b| b.action.is_none() && keymap::DEFAULTS.iter().any(|(dk, da, _)| *da == action && *dk == b.keys));
+                    || self.settings.keybindings.iter().any(|b| b.action.is_none() && keymap::defaults().any(|(dk, da, _)| da == action && dk == keymap::canonical(&b.keys)));
                 ShortcutRow { name: c.name, group: c.group, icon: c.icon, action, keys, changed }
             })
             .collect()
@@ -451,7 +451,7 @@ impl Workspace {
                     .child(div().font_weight(gpui_kit::FontWeight::SEMIBOLD).text_color(k.text).child(d.title))
                     .when(modified, |el| el.child(div().pl(GAP_1).text_size(TEXT_XS).text_color(k.accent).child("Modified")))
                     .child(div().flex_1())
-                    .when(!d.key.is_empty(), |el| el.child(div().text_size(TEXT_XS).font_family("monospace").text_color(k.text_faint).child(d.key)))
+                    .when(!d.key.is_empty(), |el| el.child(div().text_size(TEXT_XS).font_family(cx.mono()).text_color(k.text_faint).child(d.key)))
                     .children(reset),
             )
             .child(div().text_size(TEXT_SM).text_color(k.text_muted).child(d.description))
@@ -547,7 +547,7 @@ impl Workspace {
                             .child(div().flex_none().text_size(TEXT_XS).text_color(k.text_faint).child(r.group)),
                     )
                     .child(div().flex_none().w(SIDEBAR_W).child(keys))
-                    .child(div().flex_none().w(HIT_LG * 3.0).text_size(TEXT_XS).font_family("monospace").text_color(k.text_muted).child(when))
+                    .child(div().flex_none().w(HIT_LG * 3.0).text_size(TEXT_XS).font_family(cx.mono()).text_color(k.text_muted).child(when))
                     .child(div().flex_none().w(HIT_LG * 2.0).text_size(TEXT_XS).text_color(if r.changed { k.accent } else { k.text_faint }).child(source))
                     .child(
                         div()
@@ -639,7 +639,7 @@ impl Workspace {
                 .child(div().flex_none().text_size(TEXT_SM).text_color(k.text).child(c.name))
                 .child(div().flex_none().text_size(TEXT_XS).text_color(k.text_faint).child(c.version))
                 .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(TEXT_XS).text_color(k.text_faint).child(c.description))
-                .child(div().flex_none().text_size(TEXT_XS).font_family("monospace").text_color(if strict { k.warning } else { k.text_muted }).child(family.clone()))
+                .child(div().flex_none().text_size(TEXT_XS).font_family(cx.mono()).text_color(if strict { k.warning } else { k.text_muted }).child(family.clone()))
                 .when(!repo.is_empty(), |el| {
                     el.child(IconButton::new(SharedString::from(format!("oss-src-{i}")), Lucide::ExternalLink).small().tooltip(repo).on_click(move |_, _, cx| {
                         cx.stop_propagation();
@@ -686,7 +686,7 @@ impl Workspace {
                                     .border_1()
                                     .border_color(k.border)
                                     .text_size(TEXT_XS)
-                                    .font_family("monospace")
+                                    .font_family(cx.mono())
                                     .text_color(k.text_muted)
                                     .child(text),
                             )

@@ -369,7 +369,7 @@ mod tests {
     fn menu_stays_open_while_pointer_moves_onto_it(cx: &mut TestAppContext) {
         let dir = std::env::temp_dir().join(format!("graphing-menu-test-{}", std::process::id()));
         // SAFETY: tests in this binary that read config all point at this dir.
-        unsafe { std::env::set_var("XDG_CONFIG_HOME", &dir) };
+        unsafe { std::env::set_var("GRAPHING_CONFIG_DIR", &dir) };
         cx.update(|cx| {
             gpui_kit::init(cx);
             crate::keymap::apply(cx, &[]);
@@ -413,7 +413,7 @@ mod tests {
     fn import_opens_a_submenu_that_stays_while_the_pointer_crosses(cx: &mut TestAppContext) {
         let dir = std::env::temp_dir().join(format!("graphing-menu-test-{}", std::process::id()));
         // SAFETY: tests in this binary that read config all point at this dir.
-        unsafe { std::env::set_var("XDG_CONFIG_HOME", &dir) };
+        unsafe { std::env::set_var("GRAPHING_CONFIG_DIR", &dir) };
         cx.update(|cx| {
             gpui_kit::init(cx);
             crate::keymap::apply(cx, &[]);

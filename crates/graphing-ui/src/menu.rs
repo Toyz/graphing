@@ -125,8 +125,13 @@ pub fn key_chips(keys: &str) -> Vec<String> {
             out.push(match p {
                 "ctrl" => "Ctrl".into(),
                 "shift" => "Shift".into(),
+                "alt" if cfg!(target_os = "macos") => "Option".into(),
                 "alt" => "Alt".into(),
-                "cmd" | "super" | "platform" => "Super".into(),
+                "secondary" if cfg!(target_os = "macos") => "Cmd".into(),
+                "secondary" => "Ctrl".into(),
+                "cmd" | "super" | "platform" | "win" if cfg!(target_os = "macos") => "Cmd".into(),
+                "cmd" | "super" | "platform" | "win" if cfg!(target_os = "windows") => "Win".into(),
+                "cmd" | "super" | "platform" | "win" => "Super".into(),
                 "enter" => "Enter".into(),
                 "escape" => "Esc".into(),
                 "delete" => "Del".into(),
@@ -302,7 +307,7 @@ pub fn menu_surface_with(id: impl Into<ElementId>, header: Option<AnyElement>, r
                             .bg(k.hover)
                             .border_1()
                             .border_color(k.border)
-                            .font_family("monospace")
+                            .font_family(cx.mono())
                             .text_size(TEXT_XS)
                             .text_color(k.text_muted)
                             .group_hover(group.clone(), |d| d.bg(k.raised))

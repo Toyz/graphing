@@ -6,8 +6,10 @@ as yours, so anything a built-in shape can do, yours can too.
 
 | | Where | Reload |
 | --- | --- | --- |
-| Shape packs | `~/.config/graphing/packs/<id>/pack.json` (or `packs/*.json`) | Reload Shape Packs |
-| Plugins | `~/.config/graphing/plugins/<id>/plugin.json` + script | Reload Plugins |
+| Shape packs | `<config>/packs/<id>/pack.json` (or `packs/*.json`) | Reload Shape Packs |
+| Plugins | `<config>/plugins/<id>/plugin.json` + script | Reload Plugins |
+
+`<config>` is `~/.config/graphing` on Linux, `~/Library/Application Support/graphing` on macOS and `%APPDATA%\graphing` on Windows.
 
 The CLI loads both folders too, and `--packs DIR` adds more:
 `graphing render diagram.gph -o out.svg --packs ./my-packs`.

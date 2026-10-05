@@ -8,13 +8,19 @@ Open an issue; the templates ask for what helps most. In short:
 
 - what you did, what you expected, and what happened;
 - the smallest `.gph` file that shows it (the text is the diagram, so paste it);
-- your OS and how you run graphing (release build, `cargo run`, the CLI).
+- your OS (Linux, macOS or Windows) and how you run graphing (release build, `cargo run`, the CLI).
 
 For rendering problems, the output of `graphing render file.gph -o out.svg` is often the quickest way to show it.
 
 ## Building and checking
 
-You need a recent stable Rust (1.88 or newer). On Linux, gpui also needs the usual X11 or Wayland, xkbcommon and Vulkan development packages.
+You need a recent stable Rust (1.88 or newer). On Linux, gpui also needs the X11 or Wayland, xkbcommon, fontconfig and Vulkan development packages; the CI workflow in `.github/workflows/ci.yml` lists them. macOS needs the Xcode command line tools, Windows the MSVC build tools.
+
+graphing supports Linux, macOS and Windows, and CI runs the checks below on all three. Keep it that way:
+
+- Default shortcuts use `secondary-` (Cmd on macOS, Ctrl elsewhere), not `ctrl-`.
+- Paths written into a `.gph` file use forward slashes.
+- Build paths with `Path::join`, and find the config folder through `settings::config_dir()`.
 
 ```sh
 cargo run --release                 # the editor

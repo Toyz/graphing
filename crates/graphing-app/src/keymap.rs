@@ -9,53 +9,54 @@ use gpui_kit::{App, KeyBinding, KeyBindingContextPredicate, NoAction};
 
 use crate::settings::UserBinding;
 
-/// `(keys, action, context)`. Context is a gpui predicate.
+/// `(keys, action, context)`. Context is a gpui predicate. `secondary` is
+/// cmd on macOS and ctrl elsewhere.
 pub const DEFAULTS: &[(&str, &str, Option<&str>)] = &[
     // Workspace
-    ("ctrl-n", "graphing::NewFile", Some("Workspace")),
-    ("ctrl-alt-n", "graphing::NewFromTemplate", Some("Workspace")),
-    ("ctrl-o", "graphing::OpenFile", Some("Workspace")),
-    ("ctrl-s", "graphing::Save", Some("Workspace")),
-    ("ctrl-shift-s", "graphing::SaveAs", Some("Workspace")),
-    ("ctrl-w", "graphing::CloseTab", Some("Workspace")),
+    ("secondary-n", "graphing::NewFile", Some("Workspace")),
+    ("secondary-alt-n", "graphing::NewFromTemplate", Some("Workspace")),
+    ("secondary-o", "graphing::OpenFile", Some("Workspace")),
+    ("secondary-s", "graphing::Save", Some("Workspace")),
+    ("secondary-shift-s", "graphing::SaveAs", Some("Workspace")),
+    ("secondary-w", "graphing::CloseTab", Some("Workspace")),
     ("ctrl-tab", "graphing::NextTab", Some("Workspace")),
     ("ctrl-pagedown", "graphing::NextTab", Some("Workspace")),
     ("ctrl-shift-tab", "graphing::PrevTab", Some("Workspace")),
     ("ctrl-pageup", "graphing::PrevTab", Some("Workspace")),
-    ("ctrl-shift-p", "graphing::CommandPalette", Some("Workspace")),
-    ("ctrl-k", "graphing::CommandPalette", Some("Workspace")),
-    ("ctrl-b", "graphing::ToggleLeft", Some("Workspace")),
-    ("ctrl-alt-b", "graphing::ToggleRight", Some("Workspace")),
-    ("ctrl-e", "graphing::ToggleSource", Some("Workspace")),
-    ("ctrl-shift-m", "graphing::ToggleProblems", Some("Workspace")),
-    ("ctrl-shift-e", "graphing::ExportSvg", Some("Workspace")),
-    ("ctrl-shift-l", "graphing::Relayout", Some("Workspace")),
-    ("ctrl-,", "graphing::OpenSettings", Some("Workspace")),
+    ("secondary-shift-p", "graphing::CommandPalette", Some("Workspace")),
+    ("secondary-k", "graphing::CommandPalette", Some("Workspace")),
+    ("secondary-b", "graphing::ToggleLeft", Some("Workspace")),
+    ("secondary-alt-b", "graphing::ToggleRight", Some("Workspace")),
+    ("secondary-e", "graphing::ToggleSource", Some("Workspace")),
+    ("secondary-shift-m", "graphing::ToggleProblems", Some("Workspace")),
+    ("secondary-shift-e", "graphing::ExportSvg", Some("Workspace")),
+    ("secondary-shift-l", "graphing::Relayout", Some("Workspace")),
+    ("secondary-,", "graphing::OpenSettings", Some("Workspace")),
     ("f5", "graphing::PlayAnimation", Some("Workspace")),
-    ("ctrl-q", "graphing::Quit", None),
+    ("secondary-q", "graphing::Quit", None),
     // Canvas
-    ("ctrl-z", "graphing::Undo", None),
-    ("ctrl-shift-z", "graphing::Redo", None),
-    ("ctrl-y", "graphing::Redo", None),
+    ("secondary-z", "graphing::Undo", None),
+    ("secondary-shift-z", "graphing::Redo", None),
+    ("secondary-y", "graphing::Redo", None),
     ("delete", "graphing::Delete", Some("Diagram")),
     ("backspace", "graphing::Delete", Some("Diagram")),
-    ("ctrl-c", "graphing::Copy", Some("Diagram")),
-    ("ctrl-x", "graphing::Cut", Some("Diagram")),
-    ("ctrl-v", "graphing::Paste", Some("Diagram")),
-    ("ctrl-d", "graphing::Duplicate", Some("Diagram")),
-    ("ctrl-a", "graphing::SelectAll", Some("Diagram")),
+    ("secondary-c", "graphing::Copy", Some("Diagram")),
+    ("secondary-x", "graphing::Cut", Some("Diagram")),
+    ("secondary-v", "graphing::Paste", Some("Diagram")),
+    ("secondary-d", "graphing::Duplicate", Some("Diagram")),
+    ("secondary-a", "graphing::SelectAll", Some("Diagram")),
     ("escape", "graphing::Escape", Some("Diagram")),
     ("enter", "graphing::Rename", Some("Diagram")),
     ("f2", "graphing::Rename", Some("Diagram")),
     ("f", "graphing::FitView", Some("Diagram")),
     ("space", "graphing::PlayAnimation", Some("Diagram")),
-    ("ctrl-shift-n", "graphing::NewStep", Some("Diagram")),
-    ("ctrl-g", "graphing::GroupSelection", Some("Diagram")),
-    ("ctrl-shift-g", "graphing::Ungroup", Some("Diagram")),
-    ("ctrl-=", "graphing::ZoomIn", Some("Diagram")),
-    ("ctrl-+", "graphing::ZoomIn", Some("Diagram")),
-    ("ctrl--", "graphing::ZoomOut", Some("Diagram")),
-    ("ctrl-0", "graphing::ZoomReset", Some("Diagram")),
+    ("secondary-shift-n", "graphing::NewStep", Some("Diagram")),
+    ("secondary-g", "graphing::GroupSelection", Some("Diagram")),
+    ("secondary-shift-g", "graphing::Ungroup", Some("Diagram")),
+    ("secondary-=", "graphing::ZoomIn", Some("Diagram")),
+    ("secondary-+", "graphing::ZoomIn", Some("Diagram")),
+    ("secondary--", "graphing::ZoomOut", Some("Diagram")),
+    ("secondary-0", "graphing::ZoomReset", Some("Diagram")),
     ("left", "graphing::NudgeLeft", Some("Diagram")),
     ("right", "graphing::NudgeRight", Some("Diagram")),
     ("up", "graphing::NudgeUp", Some("Diagram")),
@@ -65,6 +66,47 @@ pub const DEFAULTS: &[(&str, &str, Option<&str>)] = &[
     ("shift-up", "graphing::NudgeUpBig", Some("Diagram")),
     ("shift-down", "graphing::NudgeDownBig", Some("Diagram")),
 ];
+
+/// `keys` as gpui writes a recorded keystroke on this platform: `secondary`
+/// resolved and modifiers in gpui's order, so bindings compare as text.
+pub fn canonical(keys: &str) -> String {
+    let platform = if cfg!(target_os = "macos") {
+        "cmd"
+    } else if cfg!(target_os = "windows") {
+        "win"
+    } else {
+        "super"
+    };
+    let chord = |c: &str| {
+        // `ctrl--` is ctrl plus the minus key.
+        let (mods, key) = match c.strip_suffix("--") {
+            Some(m) => (m, "-"),
+            None => c.rsplit_once('-').unwrap_or(("", c)),
+        };
+        let has = |m: &[&str]| mods.split('-').any(|p| m.contains(&p));
+        let (f, ctrl, alt, plat, shift) = (
+            has(&["fn"]),
+            has(&["ctrl", "control"]) || (!cfg!(target_os = "macos") && has(&["secondary"])),
+            has(&["alt", "option"]),
+            has(&["cmd", "super", "win", "platform"]) || (cfg!(target_os = "macos") && has(&["secondary"])),
+            has(&["shift"]),
+        );
+        let mut out = String::new();
+        for (on, name) in [(f, "fn"), (ctrl, "ctrl"), (alt, "alt"), (plat, platform), (shift, "shift")] {
+            if on {
+                out.push_str(name);
+                out.push('-');
+            }
+        }
+        out + key
+    };
+    keys.split_whitespace().map(chord).collect::<Vec<_>>().join(" ")
+}
+
+/// The defaults with their keys in [`canonical`] form.
+pub fn defaults() -> impl Iterator<Item = (String, &'static str, Option<&'static str>)> {
+    DEFAULTS.iter().map(|(k, a, c)| (canonical(k), *a, *c))
+}
 
 fn bind(cx: &mut App, keys: &str, action: Option<&str>, args: Option<serde_json::Value>, context: Option<&str>) -> Result<(), String> {
     let action = match action {
@@ -115,11 +157,12 @@ pub struct Effective {
 /// same keys in the same context; `action: null` just removes it.
 pub fn effective(user: &[UserBinding]) -> Vec<Effective> {
     let mut out: Vec<Effective> =
-        DEFAULTS.iter().map(|(k, a, c)| Effective { keys: k.to_string(), action: a.to_string(), context: c.map(str::to_string), user: false }).collect();
+        defaults().map(|(k, a, c)| Effective { keys: k, action: a.to_string(), context: c.map(str::to_string), user: false }).collect();
     for b in user {
-        out.retain(|e| !(e.keys == b.keys && e.context == b.context));
+        let keys = canonical(&b.keys);
+        out.retain(|e| !(e.keys == keys && e.context == b.context));
         if let Some(action) = &b.action {
-            out.push(Effective { keys: b.keys.clone(), action: action.clone(), context: b.context.clone(), user: true });
+            out.push(Effective { keys, action: action.clone(), context: b.context.clone(), user: true });
         }
     }
     out
@@ -137,6 +180,7 @@ pub fn context_of(action: &str) -> Option<String> {
 /// Another action already on `keys` where `action` would be bound.
 pub fn conflict(user: &[UserBinding], action: &str, keys: &str) -> Option<String> {
     let ctx = context_of(action);
+    let keys = canonical(keys);
     effective(user).into_iter().find(|e| e.keys == keys && e.action != action && (e.context == ctx || e.context.is_none() || ctx.is_none())).map(|e| e.action)
 }
 
@@ -151,8 +195,8 @@ pub fn rebind(user: &mut Vec<UserBinding>, action: &str, keys: &str) {
 
 /// Drop the user's changes to `action`, restoring its defaults.
 pub fn reset(user: &mut Vec<UserBinding>, action: &str) {
-    let defaults: Vec<(&str, Option<&str>)> = DEFAULTS.iter().filter(|(_, a, _)| *a == action).map(|(k, _, c)| (*k, *c)).collect();
-    user.retain(|b| b.action.as_deref() != Some(action) && !(b.action.is_none() && defaults.iter().any(|(k, c)| *k == b.keys && *c == b.context.as_deref())));
+    let defaults: Vec<(String, Option<&str>)> = defaults().filter(|(_, a, _)| *a == action).map(|(k, _, c)| (k, c)).collect();
+    user.retain(|b| b.action.as_deref() != Some(action) && !(b.action.is_none() && defaults.iter().any(|(k, c)| *k == canonical(&b.keys) && *c == b.context.as_deref())));
 }
 
 #[cfg(test)]
@@ -180,9 +224,20 @@ mod tests {
     #[test]
     fn conflicts_are_reported_within_a_context() {
         let user = Vec::new();
-        assert_eq!(conflict(&user, "graphing::NewFile", "ctrl-s").as_deref(), Some("graphing::Save"));
+        assert_eq!(conflict(&user, "graphing::NewFile", "secondary-s").as_deref(), Some("graphing::Save"));
         // `f` fits the canvas, but only on the canvas.
         assert_eq!(conflict(&user, "graphing::Save", "f"), None);
-        assert_eq!(conflict(&user, "graphing::Save", "ctrl-s"), None);
+        assert_eq!(conflict(&user, "graphing::Save", "secondary-s"), None);
+    }
+
+    #[test]
+    fn keys_compare_in_the_form_gpui_records_them() {
+        let primary = if cfg!(target_os = "macos") { "cmd" } else { "ctrl" };
+        assert_eq!(canonical("secondary-shift-z"), format!("{primary}-shift-z"));
+        assert_eq!(canonical("secondary--"), format!("{primary}--"));
+        assert_eq!(canonical("shift-alt-ctrl-k ctrl-c"), "ctrl-alt-shift-k ctrl-c");
+        // A recorded shortcut finds the default it collides with.
+        let user = Vec::new();
+        assert_eq!(conflict(&user, "graphing::NewFile", &format!("{primary}-s")).as_deref(), Some("graphing::Save"));
     }
 }

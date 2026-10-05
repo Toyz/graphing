@@ -244,7 +244,7 @@ impl Workspace {
                             .text_size(TEXT_SM)
                             .text_color(k.text_muted)
                             .child(subtitle)
-                            .when_some(id, |d, id| d.child(div().px(GAP_1).rounded(ROUND_XS).bg(k.hover).text_size(TEXT_XS).font_family("monospace").text_color(k.text_muted).child(id))),
+                            .when_some(id, |d, id| d.child(div().px(GAP_1).rounded(ROUND_XS).bg(k.hover).text_size(TEXT_XS).font_family(cx.mono()).text_color(k.text_muted).child(id))),
                     ),
             )
             .into_any_element()
@@ -341,7 +341,7 @@ impl Workspace {
                 .bg(k.bg)
                 .border_1()
                 .border_color(k.border)
-                .child(div().flex_1().min_w_0().text_size(TEXT_SM).font_family("monospace").text_color(k.text).overflow_hidden().text_ellipsis().whitespace_nowrap().child(v.text()))
+                .child(div().flex_1().min_w_0().text_size(TEXT_SM).font_family(cx.mono()).text_color(k.text).overflow_hidden().text_ellipsis().whitespace_nowrap().child(v.text()))
                 .child(div().invisible().group_hover("li", |d| d.visible()).child(IconButton::new(SharedString::from(format!("lix-{key}-{i}")), Lucide::X).small().tooltip("Remove").on_click(cx.listener(move |ws, _, _, cx| {
                     let mut rest = all.clone();
                     rest.remove(i);
@@ -708,7 +708,7 @@ impl Workspace {
                     .gap(GAP_1)
                     .child(div().size(ICON_SM).flex_none().border_1().border_color(k.text_muted).bg(k.bg))
                     .child(div().flex_1().child(kit::text_input(&input)))
-                    .when_some(ty.clone(), |d, t| d.child(div().flex_none().font_family("monospace").text_size(TEXT_XS).text_color(k.text_faint).child(t)))
+                    .when_some(ty.clone(), |d, t| d.child(div().flex_none().font_family(cx.mono()).text_size(TEXT_XS).text_color(k.text_faint).child(t)))
                     .child(div().flex_none().w(HIT_LG).text_right().text_size(TEXT_XS).text_color(k.text_faint).child(if *links == 0 { String::new() } else { format!("{links}\u{d7}") }))
                     .child(IconButton::new(SharedString::from(format!("prm-{i}")), Lucide::X).small().tooltip("Remove port").on_click(cx.listener(move |ws, _, _, cx| {
                         let d = ws.view().read(cx).doc().diagram().clone();
@@ -810,7 +810,7 @@ impl Workspace {
                     .rounded(ROUND_SM)
                     .bg(k.warning.opacity(0.08))
                     .text_size(TEXT_SM)
-                    .child(div().flex_none().font_family("monospace").text_color(k.warning).child(format!("L{line}")))
+                    .child(div().flex_none().font_family(cx.mono()).text_color(k.warning).child(format!("L{line}")))
                     .child(div().text_color(k.text).child(msg.clone()))
             });
             body = body.child(div().px(PANEL_PAD).pt(GAP_4).flex().flex_col().gap(GAP_1).child(kit::caption(format!("Problems  {}", diags.len()), cx)).children(list));

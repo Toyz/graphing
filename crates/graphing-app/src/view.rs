@@ -1388,10 +1388,8 @@ impl DiagramView {
     /// this diagram's folder when it can be.
     pub fn add_link(&mut self, path: &std::path::Path, at: WPoint, cx: &mut Context<Self>) {
         let dir = self.path.as_ref().and_then(|f| f.parent()).map(PathBuf::from);
-        let src = match dir.as_deref().and_then(|d| path.strip_prefix(d).ok()) {
-            Some(rel) => rel.to_string_lossy().into_owned(),
-            None => path.to_string_lossy().into_owned(),
-        };
+        // Forward slashes, so the file reads the same on every platform.
+        let src = dir.as_deref().and_then(|d| path.strip_prefix(d).ok()).unwrap_or(path).to_string_lossy().replace('\\', "/");
         let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "link".into());
         let d = self.doc.diagram();
         let base: String = stem.chars().map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' }).collect();

@@ -35,7 +35,7 @@ Capture only graphing's window, never the whole screen or "the active
 window": those grab whatever else is open. On Linux:
 
 ```sh
-env -u WAYLAND_DISPLAY XDG_CONFIG_HOME=$(mktemp -d) \
+env -u WAYLAND_DISPLAY GRAPHING_CONFIG_DIR=$(mktemp -d) \
   GRAPHING_DEBUG_OPEN=step:2 target/debug/graphing examples/animated/request.gph &
 id=$(xdotool search --sync --pid $! | tail -1)   # the window, once it exists
 sleep 3
@@ -43,9 +43,9 @@ import -window "$id" shot.png
 ```
 
 Running under XWayland (`env -u WAYLAND_DISPLAY`) lets `xdotool` find the
-window. A fresh `XDG_CONFIG_HOME` keeps your own settings, recent files and
-layout out of the picture. Settings for a shot (hiding a panel, say) go in
-`$XDG_CONFIG_HOME/graphing/settings.json`.
+window. A fresh `GRAPHING_CONFIG_DIR` keeps your own settings, recent files
+and layout out of the picture; it works the same on every platform. Settings
+for a shot (hiding a panel, say) go in `$GRAPHING_CONFIG_DIR/settings.json`.
 
 ## Interaction tests
 

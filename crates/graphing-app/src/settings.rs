@@ -10,7 +10,13 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
+/// `~/.config/graphing`, `~/Library/Application Support/graphing` or
+/// `%APPDATA%\graphing`; `GRAPHING_CONFIG_DIR` points it elsewhere (tests,
+/// clean screenshots).
 pub fn config_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("GRAPHING_CONFIG_DIR").filter(|d| !d.is_empty()) {
+        return PathBuf::from(dir);
+    }
     dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join("graphing")
 }
 

@@ -107,7 +107,11 @@ cargo run --release                     # open the editor
 cargo run --release -- examples/auth.gph
 ```
 
-On Linux, gpui needs the usual development packages for X11 or Wayland, xkbcommon and Vulkan.
+graphing runs on Linux, macOS and Windows; CI builds and tests all three. Shortcuts use Cmd on macOS and Ctrl elsewhere.
+
+- **Linux** needs the development packages for X11 or Wayland, xkbcommon, fontconfig and Vulkan (on Debian and Ubuntu: `libxkbcommon-x11-dev libwayland-dev libvulkan-dev libfontconfig-dev libx11-xcb-dev`).
+- **macOS** needs the Xcode command line tools.
+- **Windows** needs the MSVC build tools.
 
 ## Command line
 
@@ -125,8 +129,10 @@ graphing info diagram.gphz
 
 ## Extending
 
-- **Shape packs** (`~/.config/graphing/packs/<id>/pack.json`) add shapes, containers, line kinds and diagram kinds. A pack is JSON: SVG path outlines, inner details, icons, sections and fields. Nothing is hard-coded in Rust. The built-in notations use the same format.
-- **Plugins** (`~/.config/graphing/plugins/<id>/`) are Rune scripts. They run sandboxed, each on its own thread, and can only reach what their manifest asks for: reading or editing the open diagram, adding commands to the palette, registering shapes.
+- **Shape packs** (`<config>/packs/<id>/pack.json`) add shapes, containers, line kinds and diagram kinds. A pack is JSON: SVG path outlines, inner details, icons, sections and fields. Nothing is hard-coded in Rust. The built-in notations use the same format.
+- **Plugins** (`<config>/plugins/<id>/`) are Rune scripts. They run sandboxed, each on its own thread, and can only reach what their manifest asks for: reading or editing the open diagram, adding commands to the palette, registering shapes.
+
+`<config>` is `~/.config/graphing` on Linux, `~/Library/Application Support/graphing` on macOS and `%APPDATA%\graphing` on Windows.
 
 Both are described in [docs/plugins.md](docs/plugins.md), with working examples in [examples/packs](examples/packs) and [examples/plugins](examples/plugins).
 

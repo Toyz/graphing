@@ -3,7 +3,7 @@
 //! nothing on screen comes from a different design.
 
 use gpui_kit::component::theme::{Theme, ThemeMode, ThemeTokens};
-use gpui_kit::{App, Global, Window};
+use gpui_kit::{App, Global, SharedString, Window};
 
 use crate::tokens::*;
 
@@ -16,11 +16,17 @@ impl Global for UiTheme {}
 pub trait UiExt {
     /// The active semantic colors.
     fn ui(&self) -> Colors;
+    /// The platform's code font (Menlo, Consolas, the fontconfig mono).
+    fn mono(&self) -> SharedString;
 }
 
 impl UiExt for App {
     fn ui(&self) -> Colors {
         self.try_global::<UiTheme>().map_or_else(Colors::dark, |t| t.colors)
+    }
+
+    fn mono(&self) -> SharedString {
+        self.try_global::<Theme>().map_or_else(|| "monospace".into(), |t| t.mono_font_family.clone())
     }
 }
 

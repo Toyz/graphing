@@ -106,44 +106,7 @@ pub fn fuzzy(name: &str, query: &str) -> Option<(i64, Vec<usize>)> {
     (qi == q.len()).then_some((score + name.len() as i64 / 8, hits))
 }
 
-/// `ctrl-shift-p` -> ["Ctrl", "Shift", "P"]; chords separated by spaces.
-pub fn key_chips(keys: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for chord in keys.split_whitespace() {
-        let mut parts: Vec<&str> = chord.split('-').collect();
-        // `ctrl--` is ctrl plus the minus key.
-        if chord.ends_with("--") {
-            parts.retain(|p| !p.is_empty());
-            parts.push("-");
-        }
-        for p in parts.into_iter().filter(|p| !p.is_empty()) {
-            out.push(match p {
-                "ctrl" => "Ctrl".into(),
-                "shift" => "Shift".into(),
-                "alt" => "Alt".into(),
-                "cmd" | "super" | "platform" => "Super".into(),
-                "enter" => "Enter".into(),
-                "escape" => "Esc".into(),
-                "delete" => "Del".into(),
-                "backspace" => "Backspace".into(),
-                "pageup" => "PgUp".into(),
-                "pagedown" => "PgDn".into(),
-                "tab" => "Tab".into(),
-                "space" => "Space".into(),
-                "left" => "\u{2190}".into(),
-                "right" => "\u{2192}".into(),
-                "up" => "\u{2191}".into(),
-                "down" => "\u{2193}".into(),
-                other if other.chars().count() == 1 => other.to_uppercase(),
-                other => {
-                    let mut c = other.chars();
-                    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
-                }
-            });
-        }
-    }
-    out
-}
+pub use graphing_ui::menu::key_chips;
 
 impl Palette {
     pub fn new(commands: Vec<Command>, recent: Vec<SharedString>, window: &mut Window, cx: &mut Context<Self>) -> Self {

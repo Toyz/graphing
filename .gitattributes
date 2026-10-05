@@ -1,0 +1,11 @@
+# Keep text files LF in every checkout, Windows included; tests compare
+# exact output.
+* text=auto eol=lf
+
+*.png binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ttf binary
+*.gphz binary
+*.vsdx binary
