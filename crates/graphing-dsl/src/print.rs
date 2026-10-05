@@ -33,6 +33,7 @@ pub fn fmt_value(v: &Value) -> String {
         Value::Num(n) => fmt_num(*n),
         Value::Color(c) | Value::Ident(c) => c.clone(),
         Value::List(items) => format!("[{}]", items.iter().map(fmt_value).collect::<Vec<_>>().join(", ")),
+        Value::Pair(name, v) => format!("{name}: {}", fmt_value(v)),
     }
 }
 

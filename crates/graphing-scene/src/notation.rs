@@ -205,6 +205,12 @@ pub fn node_spec(d: &Diagram, n: &Node) -> NodeSpec {
         let need = (NODE_H + notes.len() as f64 * NOTE_LINE_H) / share;
         min = ((min.0.max(widest) / 10.0).ceil() * 10.0, (min.1.max(need) / 10.0).ceil() * 10.0);
     }
+    // Node-graph pins need their rows.
+    let pins = crate::pins::pins(d, n);
+    if !pins.is_empty() {
+        let need = crate::pins::size(&title, &pins, flow(d));
+        min = (min.0.max(need.0), min.1.max(need.1));
+    }
     NodeSpec { shape, stereotype, title, compartments, notes, min }
 }
 

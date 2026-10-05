@@ -305,6 +305,9 @@ pub struct DiagramKindDef {
     /// Layout direction for new nodes: `right` (default) or `down`.
     #[serde(default)]
     pub flow: Option<String>,
+    /// Lines may not form a loop (a DAG); breaking it shows in Problems.
+    #[serde(default)]
+    pub acyclic: bool,
     #[serde(skip)]
     pub pack: String,
 }
@@ -380,7 +383,7 @@ pub struct PackInfo {
 }
 
 /// The packs graphing ships, in library order.
-pub const BUILTIN: [(&str, &str); 15] = [
+pub const BUILTIN: [(&str, &str); 16] = [
     (include_str!("../packs/core.json"), "core"),
     (include_str!("../packs/sysml.json"), "sysml"),
     (include_str!("../packs/uml.json"), "uml"),
@@ -396,6 +399,7 @@ pub const BUILTIN: [(&str, &str); 15] = [
     (include_str!("../packs/timing.json"), "timing"),
     (include_str!("../packs/net.json"), "net"),
     (include_str!("../packs/infra.json"), "infra"),
+    (include_str!("../packs/graph.json"), "graph"),
 ];
 
 /// Compartments a stencil shows when its pack does not say.

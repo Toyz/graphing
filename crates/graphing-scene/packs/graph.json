@@ -1,0 +1,26 @@
+{
+  "id": "graph",
+  "name": "Node graph",
+  "icon": "Workflow",
+  "description": "Blueprint-style node graphs and DAGs: typed pins, curved wires, checked flow",
+  "version": "1",
+  "stencils": [
+    {"name": "event", "title": "Event", "category": "Node graph", "outline": "rounded", "icon": "Zap", "defaults": {"stroke": "#b3261e", "out": ["exec"]}},
+    {"name": "function", "title": "Function", "category": "Node graph", "outline": "rect", "icon": "SquareFunction", "defaults": {"stroke": "#1e63c4", "in": ["exec"], "out": ["exec"]}},
+    {"name": "pure", "title": "Pure function", "category": "Node graph", "outline": "rect", "icon": "Sigma", "defaults": {"stroke": "#2e7d32"}},
+    {"name": "branch", "title": "Branch", "category": "Node graph", "outline": "rect", "icon": "GitBranch", "defaults": {"stroke": "#616161", "in": ["exec", "condition: bool"], "out": ["true: exec", "false: exec"]}},
+    {"name": "sequence", "title": "Sequence", "category": "Node graph", "outline": "rect", "icon": "ListOrdered", "defaults": {"stroke": "#616161", "in": ["exec"], "out": ["then 0: exec", "then 1: exec"]}},
+    {"name": "variable", "title": "Variable", "category": "Node graph", "outline": "rounded", "icon": "Variable", "defaults": {"stroke": "#455a64", "out": ["value"]}},
+    {"name": "macro", "title": "Macro", "category": "Node graph", "outline": "rect", "icon": "Boxes", "defaults": {"stroke": "#6d4c41", "in": ["exec"], "out": ["exec"]}},
+    {"name": "task", "title": "Task", "category": "DAG", "outline": "rounded", "icon": "SquareCheck", "defaults": {"stroke": "#455a64"}},
+    {"name": "source", "title": "Source", "category": "DAG", "outline": "cylinder", "icon": "Database"},
+    {"name": "sink", "title": "Sink", "category": "DAG", "outline": "rounded", "icon": "Inbox"}
+  ],
+  "group_kinds": [
+    {"name": "comment", "title": "Comment", "category": "Node graph", "look": "card", "icon": "MessageSquare", "description": "A titled box around part of the graph", "defaults": {"fill": "#fab005"}}
+  ],
+  "diagram_kinds": [
+    {"id": "graph", "name": "Node graph", "context": "graph", "description": "Nodes with typed pins; data may not loop, execution may", "icon": "Workflow", "flow": "right", "acyclic": true},
+    {"id": "dag", "name": "DAG", "context": "pipeline", "description": "Steps that never loop back: builds, pipelines, dependencies", "icon": "Network", "flow": "right", "acyclic": true}
+  ]
+}

@@ -4,6 +4,7 @@
 pub mod notation;
 pub mod anim;
 pub mod path;
+pub mod pins;
 pub mod route;
 pub mod wave;
 pub mod stencils;
@@ -62,7 +63,7 @@ impl Shape {
 }
 
 /// Which side of a node a port sits on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Side {
     Top,
     Right,
@@ -77,6 +78,8 @@ pub struct PortBox {
     /// Center, on the border.
     pub at: Point,
     pub side: Side,
+    /// A node-graph pin (direction and type) rather than a plain port.
+    pub pin: Option<pins::Pin>,
 }
 
 pub const PORT: f64 = 11.0;
@@ -348,6 +351,8 @@ pub struct EdgeLine {
     pub stereotype: Option<String>,
     pub label: Option<String>,
     pub stroke: Option<u32>,
+    /// Wired wrong (see `Scene::problems`); the canvas marks it.
+    pub problem: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -358,6 +363,8 @@ pub struct Scene {
     pub frame: Option<FrameBox>,
     /// Mono compartments, sharp corners, thin strokes.
     pub technical: bool,
+    /// Wiring problems: pin directions and types, doubled inputs, loops.
+    pub problems: Vec<pins::Problem>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -456,6 +463,13 @@ impl Scene {
 
     pub fn port(&self, node: &str, port: &str) -> Option<PortBox> {
         self.nodes.iter().find(|n| n.id == node)?.ports.iter().find(|p| p.name == port).cloned()
+    }
+
+    /// A wire's end at `node.port`: where an input and an output share the
+    /// name (`exec`), the one facing `dir`.
+    pub fn port_toward(&self, node: &str, port: &str, dir: pins::PinDir) -> Option<PortBox> {
+        let ports = &self.nodes.iter().find(|n| n.id == node)?.ports;
+        ports.iter().find(|p| p.name == port && p.pin.as_ref().is_some_and(|q| q.dir == dir)).or_else(|| ports.iter().find(|p| p.name == port)).cloned()
     }
 
     pub fn rect_of(&self, id: &str) -> Option<Rect> {
@@ -691,13 +705,16 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
                 stereotype: spec.stereotype,
                 label: e.label.clone(),
                 stroke: d.edge_prop(e, "stroke").and_then(color),
+                problem: false,
             });
             continue;
         }
         let (Some((a, sa)), Some((b, sb))) = (scene.outline_of(&e.from), scene.outline_of(&e.to)) else { continue };
         let via = d.waypoints.get(&e.id).cloned().unwrap_or_default();
-        let from_tip = e.from_port.as_deref().and_then(|p| scene.port(&e.from, p)).map(|p| port_tip(&p));
-        let to_tip = e.to_port.as_deref().and_then(|p| scene.port(&e.to, p)).map(|p| port_tip(&p));
+        // A wire leaves an output and arrives at an input (`<-` the other way).
+        let (from_dir, to_dir) = if e.arrow == graphing_model::Arrow::Back { (pins::PinDir::In, pins::PinDir::Out) } else { (pins::PinDir::Out, pins::PinDir::In) };
+        let from_tip = e.from_port.as_deref().and_then(|p| scene.port_toward(&e.from, p, from_dir)).map(|p| port_tip(&p));
+        let to_tip = e.to_port.as_deref().and_then(|p| scene.port_toward(&e.to, p, to_dir)).map(|p| port_tip(&p));
         let first = via.first().copied().or(to_tip).unwrap_or(b.center());
         let last = via.last().copied().or(from_tip).unwrap_or(a.center());
         let start = from_tip.unwrap_or_else(|| scene.clip(&e.from, sa, a, first));
@@ -721,9 +738,32 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
                     stereotype: spec.stereotype,
                     label: e.label.clone(),
                     stroke: d.edge_prop(e, "stroke").and_then(color),
+                    problem: false,
                 });
                 continue;
             }
+        }
+        // Wires between pins curve out of one and into the other.
+        let pin_side = |node: &str, port: &Option<String>, dir| port.as_deref().and_then(|p| scene.port_toward(node, p, dir)).filter(|p| p.pin.is_some());
+        let (pa, pb) = (pin_side(&e.from, &e.from_port, from_dir), pin_side(&e.to, &e.to_port, to_dir));
+        if via.is_empty() && (pa.is_some() || pb.is_some()) {
+            let spec = notation::edge_spec(d, e);
+            let pin = pa.as_ref().or(pb.as_ref()).and_then(|p| p.pin.clone());
+            // Pins already show which way a wire runs: no arrowheads. Data
+            // wires take their type's color, execution wires the line color.
+            let typed = pin.filter(|p| !p.exec()).map(|p| pins::color(p.ty.as_deref()));
+            scene.edges.push(EdgeLine {
+                id: e.id.clone(),
+                points: pins::wire(start, pa.map(|p| p.side), end, pb.map(|p| p.side)),
+                head: End::None,
+                tail: End::None,
+                dashed: spec.dashed,
+                stereotype: spec.stereotype,
+                label: e.label.clone(),
+                stroke: d.edge_prop(e, "stroke").and_then(color).or(typed),
+                problem: false,
+            });
+            continue;
         }
         let mut points = vec![start];
         points.extend(via);
@@ -748,7 +788,12 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
             stereotype: spec.stereotype,
             label: e.label.clone(),
             stroke: d.edge_prop(e, "stroke").and_then(color),
+            problem: false,
         });
+    }
+    scene.problems = pins::problems(d);
+    for e in &mut scene.edges {
+        e.problem = scene.problems.iter().any(|p| p.id == e.id);
     }
     if let Some(title) = notation::frame_title(d) {
         let r = scene.content_bounds().unwrap_or(Rect::new(0.0, 0.0, 400.0, 240.0));
@@ -805,11 +850,28 @@ fn port_tip(p: &PortBox) -> Point {
 /// Ports used by edges (and declared in a `ports` list) go on the side that
 /// faces what they connect to, spread evenly along it.
 fn place_ports(d: &Diagram, scene: &mut Scene) {
+    // Node-graph pins have fixed places: inputs on the inflow side.
+    let flow = notation::flow(d);
+    let mut pinned = std::collections::HashSet::new();
+    for n in &d.nodes {
+        let list = pins::pins(d, n);
+        if list.is_empty() {
+            continue;
+        }
+        let Some(nb) = scene.nodes.iter_mut().find(|b| b.id == n.id) else { continue };
+        for (p, (at, side)) in list.iter().zip(pins::place(nb.rect, &list, flow)) {
+            nb.ports.push(PortBox { name: p.name.clone(), at, side, pin: Some(p.clone()) });
+        }
+        pinned.insert(n.id.clone());
+    }
     // node -> side -> [(port, coordinate of the far end along that side)]
     let mut want: HashMap<String, HashMap<String, (Side, f64)>> = HashMap::new();
     let center = |s: &Scene, id: &str| s.rect_of(id).map(|r| r.center());
     for e in &d.edges {
         for (node, port, other) in [(&e.from, &e.from_port, &e.to), (&e.to, &e.to_port, &e.from)] {
+            if pinned.contains(node) {
+                continue;
+            }
             let (Some(port), Some(r), Some(o)) = (port, scene.rect_of(node), center(scene, other)) else { continue };
             let c = r.center();
             let (dx, dy) = (o.x - c.x, o.y - c.y);
@@ -849,7 +911,7 @@ fn place_ports(d: &Diagram, scene: &mut Scene) {
                     Side::Left => Point::new(r.origin.x, r.origin.y + r.size.h * f),
                     Side::Right => Point::new(r.origin.x + r.size.w, r.origin.y + r.size.h * f),
                 };
-                nb.ports.push(PortBox { name: name.clone(), at, side });
+                nb.ports.push(PortBox { name: name.clone(), at, side, pin: None });
             }
         }
     }

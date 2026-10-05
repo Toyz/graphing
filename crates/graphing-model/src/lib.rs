@@ -23,13 +23,15 @@ pub enum Value {
     Ident(String),
     /// `[a, "b", 3]`; compartments, item lists, ports.
     List(Vec<Value>),
+    /// `name: value` as a list item: a typed port or pin (`[a: float]`).
+    Pair(String, Box<Value>),
 }
 
 impl Value {
     pub fn as_str(&self) -> &str {
         match self {
             Value::Str(s) | Value::Color(s) | Value::Ident(s) => s,
-            Value::Num(_) | Value::List(_) => "",
+            Value::Num(_) | Value::List(_) | Value::Pair(..) => "",
         }
     }
 
@@ -47,6 +49,7 @@ impl Value {
                 if n.fract() == 0.0 { format!("{}", *n as i64) } else { n.to_string() }
             }
             Value::List(v) => v.iter().map(Value::text).collect::<Vec<_>>().join(", "),
+            Value::Pair(name, v) => format!("{name}: {}", v.text()),
             other => other.as_str().to_string(),
         }
     }

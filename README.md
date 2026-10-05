@@ -17,7 +17,7 @@ graphing is a desktop diagram editor written in Rust on gpui (through [gpui-kit]
   - Dock panels where you like.
   - Command palette, keyboard shortcuts you can rebind, undo that covers everything.
   - A source pane with highlighting, completions and live problems.
-- **Notations built in.** SysML, UML, C4, ER (crow's foot and Chen), BPMN, data flow and threat models, control block diagrams, fault trees, ArchiMate, event storming, timing diagrams, networks, org charts and mind maps.
+- **Notations built in.** SysML, UML, C4, ER (crow's foot and Chen), BPMN, data flow and threat models, control block diagrams, fault trees, ArchiMate, event storming, timing diagrams, networks, org charts, mind maps, and Blueprint-style node graphs and DAGs with typed pins and checked wiring.
 - **Guided explainers.** Turn a diagram into steps that show, highlight, run dots along lines, move shapes and move the camera. Play it on the canvas, or export a GIF, WebM, animated PNG or animated SVG.
 - **Layout that helps.**
   - Automatic layout: left to right, top down, or radial for mind maps.

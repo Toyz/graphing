@@ -133,6 +133,7 @@ fn value_json(v: &Value) -> serde_json::Value {
         Value::Str(s) | Value::Color(s) | Value::Ident(s) => serde_json::Value::String(s.clone()),
         Value::Num(n) => serde_json::Number::from_f64(*n).map_or(serde_json::Value::Null, serde_json::Value::Number),
         Value::List(items) => serde_json::Value::Array(items.iter().map(value_json).collect()),
+        Value::Pair(..) => serde_json::Value::String(v.text()),
     }
 }
 

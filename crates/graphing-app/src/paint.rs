@@ -7,7 +7,7 @@ use gpui_kit::{
 
 use graphing_model::Rect;
 use graphing_scene::notation::EndStroke;
-use graphing_scene::{EdgeLine, End, FrameBox, GroupBox, NodeBox, PORT, PortBox, Scene, Shape, Side, notation};
+use graphing_scene::{EdgeLine, End, FrameBox, GroupBox, NodeBox, PORT, PortBox, Scene, Shape, Side, notation, pins};
 
 #[derive(Clone, Copy)]
 pub struct Palette {
@@ -23,6 +23,8 @@ pub struct Palette {
     pub muted: Hsla,
     /// Item flow stereotypes.
     pub flow: Hsla,
+    /// Wires that break the diagram's rules.
+    pub danger: Hsla,
 }
 
 impl From<graphing_ui::Colors> for Palette {
@@ -39,6 +41,7 @@ impl From<graphing_ui::Colors> for Palette {
             accent: k.accent,
             muted: k.text_muted,
             flow: k.flow,
+            danger: k.danger,
         }
     }
 }
@@ -59,6 +62,7 @@ impl Palette {
             accent: f(self.accent),
             muted: f(self.muted),
             flow: f(self.flow),
+            danger: f(self.danger),
         }
     }
 }
@@ -659,6 +663,10 @@ fn node(f: &Frame, n: &NodeBox, window: &mut Window, cx: &mut App) {
             }
         }
     }
+    let pinned = n.ports.iter().any(|p| p.pin.is_some());
+    if pinned && matches!(n.shape, Shape::Rect | Shape::Rounded) {
+        node_header(f, n, b, stroke, window, cx);
+    }
     // Pictures cannot fade; they appear halfway through.
     if let Some(src) = &n.image
         && f.fade > 0.5
@@ -676,8 +684,8 @@ fn node(f: &Frame, n: &NodeBox, window: &mut Window, cx: &mut App) {
     }
 
     let structured = n.shape == Shape::Block || !n.compartments.is_empty() || n.stereotype.is_some();
-    if f.editing == Some(n.id.as_str()) {
-        // The in-place editor draws the label.
+    if f.editing == Some(n.id.as_str()) || pinned && matches!(n.shape, Shape::Rect | Shape::Rounded) {
+        // The in-place editor draws the label; a node graph node, its header.
     } else if structured {
         structured_text(f, n, b, ink, stroke, window, cx);
     } else if n.label_below {
@@ -758,7 +766,65 @@ fn structured_text(f: &Frame, n: &NodeBox, b: Bounds<Pixels>, ink: Hsla, stroke:
     }
 }
 
+/// A node-graph node's title band: the node's color (its stroke), the
+/// title on it.
+fn node_header(f: &Frame, n: &NodeBox, b: Bounds<Pixels>, stroke: Hsla, window: &mut Window, cx: &mut App) {
+    let band = Bounds { origin: b.origin, size: size(b.size.width, f.view.len(pins::PIN_TOP as f32).min(b.size.height)) };
+    let color = n.stroke.map_or(f.palette.accent.opacity(0.85 * f.fade), |c| f.rgb(c));
+    let r = f.view.len(if n.shape == Shape::Rounded { 14.0 } else { 6.0 });
+    window.paint_quad(quad(band, gpui_kit::Corners { top_left: r, top_right: r, bottom_left: px(0.), bottom_right: px(0.) }, color, px(0.), stroke, BorderStyle::default()));
+    let size_px = HEADER_PT * f.view.zoom;
+    if size_px < 4.0 {
+        return;
+    }
+    let ink = n.stroke.map_or(f.palette.text, |c| contrast(c).opacity(f.fade));
+    let line = shape_text(&n.label, size_px, ink, Face::SansBold, f, window);
+    let lh = px(size_px * 1.3);
+    line.paint(point(b.origin.x + f.view.len(12.0), band.origin.y + (band.size.height - lh) / 2.0), lh, TextAlign::Left, None, window, cx).ok();
+}
+
+/// A node-graph pin: a dot (data) or an arrow (execution) in its type's
+/// color, its name inside the node.
+fn pin(f: &Frame, p: &PortBox, pin: &pins::Pin, window: &mut Window, cx: &mut App) {
+    let c = f.view.pt(p.at);
+    let r = f.view.len(pins::PIN_R as f32);
+    let color = if pin.exec() { f.palette.edge } else { f.rgb(pins::color(pin.ty.as_deref())) };
+    if pin.exec() {
+        // Points along the flow: right on the sides, down on top and bottom.
+        let tri = match p.side {
+            Side::Left | Side::Right => [point(c.x - r, c.y - r), point(c.x + r, c.y), point(c.x - r, c.y + r)],
+            Side::Top | Side::Bottom => [point(c.x - r, c.y - r), point(c.x + r, c.y - r), point(c.x, c.y + r)],
+        };
+        let mut pb = PathBuilder::fill();
+        pb.add_polygon(&tri, true);
+        if let Ok(path) = pb.build() {
+            window.paint_path(path, color);
+        }
+    } else {
+        let dot = Bounds { origin: point(c.x - r, c.y - r), size: size(r * 2.0, r * 2.0) };
+        window.paint_quad(quad(dot, r, color, px(1.0), f.palette.bg, BorderStyle::default()));
+    }
+    let size_px = pins::PIN_PT as f32 * f.view.zoom;
+    if size_px < 4.0 || pin.label().is_empty() {
+        return;
+    }
+    let line = shape_text(pin.label(), size_px, f.palette.text, Face::Sans, f, window);
+    let lh = px(size_px * 1.3);
+    let gap = r + f.view.len(6.0);
+    let origin = match p.side {
+        Side::Left => point(c.x + gap, c.y - lh / 2.0),
+        Side::Right => point(c.x - gap - line.width, c.y - lh / 2.0),
+        // Above the node, clear of its title, beside the wire coming in.
+        Side::Top => point(c.x + r + f.view.len(3.0), c.y - r - lh),
+        Side::Bottom => point(c.x - line.width / 2.0, c.y - gap - lh),
+    };
+    line.paint(origin, lh, TextAlign::Left, None, window, cx).ok();
+}
+
 fn port(f: &Frame, p: &PortBox, stroke: Hsla, fill: Hsla, window: &mut Window, cx: &mut App) {
+    if let Some(info) = &p.pin {
+        return pin(f, p, info, window, cx);
+    }
     let c = f.view.pt(p.at);
     let h = f.view.len(PORT as f32 / 2.0);
     let sq = Bounds { origin: point(c.x - h, c.y - h), size: size(h * 2.0, h * 2.0) };
@@ -888,7 +954,11 @@ fn edge(f: &Frame, e: &EdgeLine, window: &mut Window, cx: &mut App) {
     let tech = f.scene.technical;
     let pts: Vec<Point<Pixels>> = e.points.iter().map(|&p| f.view.pt(p)).collect();
     let selected = f.is_selected(&e.id);
-    let color = if selected { f.palette.accent } else { f.hex(e.stroke, f.palette.edge) };
+    let color = match (selected, e.problem) {
+        (true, _) => f.palette.accent,
+        (false, true) => f.palette.danger,
+        (false, false) => f.hex(e.stroke, f.palette.edge),
+    };
     let base = if tech { 1.25 } else { 1.5 };
     let mut pb = PathBuilder::stroke(px(if selected { base + 1.0 } else { base }));
     if e.dashed {

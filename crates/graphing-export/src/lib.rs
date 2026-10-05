@@ -12,7 +12,7 @@ use graphing_dsl::Document;
 use graphing_model::{Op, Placement, Point, Rect};
 use graphing_scene::anim::{AnimState, Timeline};
 use graphing_scene::stencils::GlyphAt;
-use graphing_scene::{EdgeLine, End, FrameBox, GroupBox, NodeBox, PORT, PortBox, Scene, Shape, Side, notation};
+use graphing_scene::{EdgeLine, End, FrameBox, GroupBox, NodeBox, PORT, PortBox, Scene, Shape, Side, notation, pins};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
@@ -886,7 +886,35 @@ impl Kit<'_> {
 
         let structured = nb.shape == Shape::Block || !nb.compartments.is_empty() || nb.stereotype.is_some();
         let centered_glyph = nb.glyph.as_ref().is_some_and(|g| g.at == GlyphAt::Center);
-        if structured {
+        let pinned = nb.ports.iter().any(|p| p.pin.is_some()) && matches!(nb.shape, Shape::Rect | Shape::Rounded);
+        if pinned {
+            // A node-graph node: its title on a band in its color.
+            let (x, y, w) = (r.origin.x, r.origin.y, r.size.w);
+            let h = pins::PIN_TOP.min(r.size.h);
+            let rad = if nb.shape == Shape::Rounded { 14.0 } else { 6.0 };
+            let band = nb.stroke.unwrap_or(0x7950f2);
+            let _ = writeln!(
+                s,
+                r#"<path d="M{} {} Q{} {} {} {} H{} Q{} {} {} {} V{} H{} Z" fill="{}" fill-opacity="{}"/>"#,
+                n(x),
+                n(y + rad),
+                n(x),
+                n(y),
+                n(x + rad),
+                n(y),
+                n(x + w - rad),
+                n(x + w),
+                n(y),
+                n(x + w),
+                n(y + rad),
+                n(y + h),
+                n(x),
+                hex(band),
+                if nb.stroke.is_some() { "1" } else { "0.85" }
+            );
+            let ink = nb.stroke.map_or(t.text, contrast);
+            let _ = writeln!(s, r#"<text x="{}" y="{}" font-size="12.5" font-weight="600" fill="{}" dominant-baseline="central">{}</text>"#, n(x + 12.0), n(y + h / 2.0), hex(ink), esc(&nb.label));
+        } else if structured {
             self.structured(s, nb, ink, stroke);
         } else if nb.label_below {
             let lines = nb.label.split('\n').count().max(1) as f64;
@@ -1086,7 +1114,46 @@ impl Kit<'_> {
         }
     }
 
+    /// A node-graph pin: a dot (data) or an arrow (execution) in its type's
+    /// color, its name inside the node.
+    fn pin(&self, s: &mut String, p: &PortBox, pin: &pins::Pin) {
+        let (c, r) = (p.at, pins::PIN_R);
+        let color = if pin.exec() { hex(self.t.edge) } else { hex(pins::color(pin.ty.as_deref())) };
+        if pin.exec() {
+            let pts = match p.side {
+                Side::Left | Side::Right => [(c.x - r, c.y - r), (c.x + r, c.y), (c.x - r, c.y + r)],
+                Side::Top | Side::Bottom => [(c.x - r, c.y - r), (c.x + r, c.y - r), (c.x, c.y + r)],
+            };
+            let pts = pts.iter().map(|(x, y)| format!("{},{}", n(*x), n(*y))).collect::<Vec<_>>().join(" ");
+            let _ = writeln!(s, r#"<polygon points="{pts}" fill="{color}"/>"#);
+        } else {
+            let _ = writeln!(s, r#"<circle cx="{}" cy="{}" r="{}" fill="{color}" stroke="{}"/>"#, n(c.x), n(c.y), n(r), hex(self.t.bg));
+        }
+        if pin.label().is_empty() {
+            return;
+        }
+        let gap = r + 6.0;
+        let (x, y, anchor) = match p.side {
+            Side::Left => (c.x + gap, c.y, "start"),
+            Side::Right => (c.x - gap, c.y, "end"),
+            Side::Top => (c.x + r + 3.0, c.y - r - 7.0, "start"),
+            Side::Bottom => (c.x, c.y - gap - 6.0, "middle"),
+        };
+        let _ = writeln!(
+            s,
+            r#"<text x="{}" y="{}" text-anchor="{anchor}" font-size="{}" fill="{}" dominant-baseline="central">{}</text>"#,
+            n(x),
+            n(y),
+            n(pins::PIN_PT),
+            hex(self.t.text),
+            esc(pin.label())
+        );
+    }
+
     fn port(&self, s: &mut String, p: &PortBox, stroke: u32, fill: u32) {
+        if let Some(pin) = &p.pin {
+            return self.pin(s, p, pin);
+        }
         let h = PORT / 2.0;
         let _ = writeln!(
             s,
@@ -1669,6 +1736,8 @@ mod tests {
             let src = std::fs::read_to_string(&path).unwrap();
             let doc = Document::parse(src.clone());
             assert!(doc.diags().is_empty(), "{name}: {:?}", doc.diags());
+            let wiring = pins::problems(doc.diagram());
+            assert!(wiring.is_empty(), "{name}: {wiring:?}");
             let d = doc.diagram();
             let reg = graphing_scene::stencils::registry();
             for n in &d.nodes {

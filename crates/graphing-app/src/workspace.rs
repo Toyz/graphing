@@ -1463,17 +1463,17 @@ impl Workspace {
         let view = self.view().read(cx);
         let src = view.doc().source().to_string();
         let title = view.title();
-        let diags: Vec<(usize, usize, String, bool)> = view
-            .doc()
-            .diags()
-            .iter()
-            .map(|d| {
-                let line = src[..d.span.start.min(src.len())].matches('\n').count() + 1;
-                (d.span.start, line, d.message.clone(), d.severity == graphing_dsl::Severity::Error)
-            })
-            .collect();
+        let line_of = |at: usize| src[..at.min(src.len())].matches('\n').count() + 1;
+        let mut diags: Vec<(usize, usize, String, bool)> =
+            view.doc().diags().iter().map(|d| (d.span.start, line_of(d.span.start), d.message.clone(), d.severity == graphing_dsl::Severity::Error)).collect();
+        // Wiring problems (pins, loops) point at the statement they are about.
+        for p in graphing_scene::pins::problems(view.doc().diagram()) {
+            let at = view.doc().span_of(&p.id).map_or(0, |s| s.start);
+            diags.push((at, line_of(at), p.message, true));
+        }
+        diags.sort_by_key(|d| d.0);
         if diags.is_empty() {
-            return div().size_full().bg(k.chrome).child(kit::empty_state(Lucide::CircleCheck, "No problems", format!("{title} parses cleanly"), cx)).into_any_element();
+            return div().size_full().bg(k.chrome).child(kit::empty_state(Lucide::CircleCheck, "No problems", format!("{title} parses and wires cleanly"), cx)).into_any_element();
         }
         let rows = diags.into_iter().enumerate().map(|(i, (offset, line, message, error))| {
             div()
@@ -1516,7 +1516,10 @@ impl Workspace {
             let full = v.path().map_or("Not saved yet".to_string(), |p| p.display().to_string());
             (folder, v.title(), v.is_dirty(), full)
         };
-        let warn = self.view().read(cx).doc().diags().len();
+        let warn = {
+            let doc = self.view().read(cx).doc();
+            doc.diags().len() + graphing_scene::pins::problems(doc.diagram()).len()
+        };
         let crumb = div()
             .id("crumb")
             .flex()

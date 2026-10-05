@@ -5,8 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to a pull request replaces its run; runs on main all finish.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
   cancel-in-progress: true
 
 env:

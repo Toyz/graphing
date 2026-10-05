@@ -45,6 +45,36 @@ Canvas, SVG/PNG export and the library tiles draw all of them.
 | `archimate` | Business actor/role/process/function/event/service/object, Application component/service/interface/function/data, Node, Device, System software, Artifact, Network, Stakeholder, Driver, Goal, Requirement, Principle | Grouping, Location | serving, realization, assignment, access, flow, triggering, influence | Business, Application, Technology, Motivation |
 | `org` | Person card, Team, Role; Mind map central topic, Topic, Subtopic | Department | reports-to, branch | Org chart, Mind map |
 | `timing` | Signal, Clock, Bus, drawn from `wave: "0.1..p.x=.z"` and `data: [..]` | Signal group | causes | Timing |
+| `graph` | Event, Function, Pure function, Branch, Sequence, Variable, Macro; Task, Source, Sink | Comment | (wires between pins) | Node graph, DAG |
+
+### Node graphs and DAGs
+
+Any node can carry typed pins, Blueprint style. The `graph` pack's shapes
+come with sensible ones (a branch has `exec` and `condition: bool` in,
+`true` and `false` out), and any node can list its own:
+
+```graphing
+add: graph.pure "Add" { in: [a: float, b: float, c: float], out: [sum: float, carry: int] }
+x.value -> add.a
+```
+
+- `in` and `out` take any number of pins, each `name` or `name: type`. A
+  pin named or typed `exec` carries execution order rather than data and
+  draws as an arrow.
+- Inputs sit on the side flow comes from (left, or top when the diagram
+  flows down) and outputs opposite. `in_side: top` or `out_side: bottom`
+  moves a whole list; `sides: [carry: bottom]` moves one pin.
+- Wires between pins curve, take their data type's color and need no
+  arrowheads. `a.exec -> b.exec` connects an input and an output that share
+  a name: the source end is the output.
+- Problems (and `graphing check`) name wiring mistakes: a wire from an
+  input or into an output, mismatched types (`any` or no type matches
+  anything), execution wired to data, a second wire into a data input, a
+  second wire out of an execution output, and a pin the node does not
+  have. The canvas draws such wires red.
+- `kind: graph` and `kind: dag` diagrams are acyclic: a wire that closes a
+  loop is a problem. Execution wires may loop back, as in Blueprint. Any
+  diagram can ask for this with `acyclic: true`.
 
 ## Around the packs
 

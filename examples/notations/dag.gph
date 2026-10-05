@@ -1,0 +1,24 @@
+# A build pipeline as a DAG: every step runs after the ones it needs and
+# nothing loops back. Add `test -> fetch` and Problems marks the loop.
+diagram "Release pipeline" { kind: dag }
+use graph
+
+fetch: graph.source "Fetch sources"
+deps: graph.task "Resolve dependencies"
+lint: graph.task "Lint"
+build: graph.task "Build"
+unit: graph.task "Unit tests"
+e2e: graph.task "End-to-end tests"
+docs: graph.task "Build docs"
+ship: graph.sink "Publish release"
+
+fetch -> deps
+fetch -> lint
+deps -> build
+build -> unit
+build -> e2e
+deps -> docs
+lint -> ship
+unit -> ship
+e2e -> ship
+docs -> ship

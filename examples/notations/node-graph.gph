@@ -1,0 +1,34 @@
+# A Blueprint-style node graph: white wires run the steps in order,
+# colored ones carry typed values. Miswire one (say, `health.value ->
+# low.b`) and Problems says why.
+diagram "Low health warning" { kind: graph }
+use graph as g
+
+tick: g.event "Event Tick"
+health: g.variable "Health" { out: [value: float] }
+limit: g.variable "Threshold" { out: [value: float] }
+low: g.pure "Less Than" { in: [a: float, b: float], out: [result: bool] }
+check: g.branch "Branch"
+warn: g.function "Print String" { in: [exec, text: string], out: [exec] }
+msg: g.variable "Warning text" { out: [value: string] }
+heal: g.function "Apply Heal" { in: [exec, amount: float], out: [exec] }
+
+tick.exec -> check.exec
+health.value -> low.a
+limit.value -> low.b
+low.result -> check.condition
+check.true -> warn.exec
+msg.value -> warn.text
+warn.exec -> heal.exec
+limit.value -> heal.amount
+
+layout {
+  tick    0 0
+  health  0 140
+  limit   0 240
+  low     260 160
+  check   500 0
+  msg     500 200
+  warn    760 0
+  heal    1040 0
+}

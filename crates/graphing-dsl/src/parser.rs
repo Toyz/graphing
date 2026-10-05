@@ -397,6 +397,13 @@ impl Parser {
                     match self.peek()? {
                         Tok::Newline | Tok::Comma => self.pos += 1,
                         Tok::RBracket => break,
+                        // `name: value`, a typed port or pin.
+                        Tok::Ident(name) if self.peek_at(1) == Some(&Tok::Colon) => {
+                            let name = name.clone();
+                            self.pos += 2;
+                            let v = self.value()?.value;
+                            items.push(Value::Pair(name, Box::new(v)));
+                        }
                         _ => items.push(self.value()?.value),
                     }
                 }

@@ -46,6 +46,8 @@ pub(crate) const TEMPLATES: &[Template] = &[
     Template { name: "Network", pack: "net", blurb: "Devices, links and zones", src: example!("notations/network.gph") },
     Template { name: "Org chart", pack: "org", blurb: "People and teams, top down", src: example!("notations/org-chart.gph") },
     Template { name: "Mind map", pack: "org", blurb: "Ideas around one topic", src: example!("notations/mind-map.gph") },
+    Template { name: "Node graph", pack: "graph", blurb: "Typed pins and wires, Blueprint style, checked as you wire", src: example!("notations/node-graph.gph") },
+    Template { name: "DAG", pack: "graph", blurb: "Steps that never loop back: builds, pipelines", src: example!("notations/dag.gph") },
 ];
 
 impl Workspace {

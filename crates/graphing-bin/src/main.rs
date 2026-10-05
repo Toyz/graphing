@@ -95,14 +95,22 @@ fn check(file: &Path) -> ExitCode {
         }
     };
     let doc = graphing_dsl::Document::parse(src.as_str());
+    let at = |offset: usize| {
+        let line = src[..offset].matches('\n').count() + 1;
+        let col = offset - src[..offset].rfind('\n').map_or(0, |i| i + 1) + 1;
+        format!("{}:{line}:{col}", file.display())
+    };
     for d in doc.diags() {
-        let line = src[..d.span.start].matches('\n').count() + 1;
-        let col = d.span.start - src[..d.span.start].rfind('\n').map_or(0, |i| i + 1) + 1;
-        println!("{}:{line}:{col}: {}", file.display(), d.message);
+        println!("{}: {}", at(d.span.start), d.message);
+    }
+    // Wiring: pin directions and types, doubled inputs, loops.
+    let problems = graphing_scene::pins::problems(doc.diagram());
+    for p in &problems {
+        println!("{}: {}", at(doc.span_of(&p.id).map_or(0, |s| s.start)), p.message);
     }
     let m = doc.diagram();
     println!("{} nodes, {} edges, {} groups", m.nodes.len(), m.edges.len(), m.groups.len());
-    if doc.diags().is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    if doc.diags().is_empty() && problems.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
 
 /// A `.gph` or `.gphz` file as a package (plain text has no assets).

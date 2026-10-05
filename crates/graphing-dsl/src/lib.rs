@@ -79,6 +79,13 @@ impl Document {
         self.reparse();
     }
 
+    /// Where node, group or edge `id` is written: its statement. `None` for
+    /// shapes only implied by an edge.
+    pub fn span_of(&self, id: &str) -> Option<std::ops::Range<usize>> {
+        let si = self.index.nodes.get(id).or_else(|| self.index.groups.get(id)).copied().or_else(|| self.index.edges.get(id).map(|e| e.0))?;
+        Some(self.file.stmts[si].span.clone())
+    }
+
     /// Apply an edit to both the model and the text. Returns the inverse op,
     /// or `None` if the op does not apply to the current model.
     pub fn apply(&mut self, op: &Op) -> Option<Op> {
