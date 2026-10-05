@@ -22,8 +22,10 @@ use crate::Scene;
 pub const DEFAULT_STEP: f64 = 2.0;
 /// Seconds a fade takes.
 pub const FADE: f64 = 0.45;
-/// Seconds the camera takes to reach a new focus.
+/// Seconds the camera takes to reach a new focus nearby; farther moves
+/// take longer, up to [`MOVE_MAX`].
 pub const MOVE: f64 = 0.9;
+pub const MOVE_MAX: f64 = 1.8;
 /// Diagram units a flow dot travels per second.
 pub const FLOW_SPEED: f64 = 90.0;
 /// Distance between flow dots along an edge.
@@ -56,7 +58,8 @@ pub struct Timeline {
     flows: Vec<Vec<String>>,
     glows: Vec<Vec<String>>,
     /// Camera targets: (second, rect to frame).
-    focus: Vec<(f64, Rect, Ease)>,
+    /// Camera moves: start, target, curve, seconds.
+    focus: Vec<(f64, Rect, Ease, f64)>,
     /// Everything, for `focus all` and the start.
     whole: Option<Rect>,
     /// Edge id -> (from, to).
@@ -199,8 +202,8 @@ impl Timeline {
                         let rect = if a.targets.iter().any(|x| x == "all") { t.whole } else { frame(&ids) };
                         if let Some(r) = rect {
                             focused = true;
+                            t.focus.push((at, r, ease, move_time(camera.or(t.whole), r)));
                             camera = Some(r);
-                            t.focus.push((at, r, ease));
                         }
                     }
                 }
@@ -214,7 +217,7 @@ impl Timeline {
             {
                 let r = cam.union(need);
                 camera = Some(r);
-                t.focus.push((at, r, ease));
+                t.focus.push((at, r, ease, move_time(Some(cam), r)));
             }
             t.flows.push(flows);
             t.glows.push(glows);
@@ -320,16 +323,27 @@ impl Timeline {
             && !self.focus.is_empty()
         {
             let mut cam = whole;
-            for &(at, r, curve) in &self.focus {
+            for &(at, r, curve, len) in &self.focus {
                 if at > secs {
                     break;
                 }
-                cam = lerp_rect(cam, r, curve.at((secs - at) / MOVE));
+                cam = lerp_rect(cam, r, curve.at((secs - at) / len));
             }
             s.camera = Some(cam);
         }
         s
     }
+}
+
+/// Seconds to move the camera from `from` to `to`: [`MOVE`] for a short
+/// hop, longer the farther it pans or the more it zooms, so wide jumps
+/// still ease in and out instead of whipping across.
+fn move_time(from: Option<Rect>, to: Rect) -> f64 {
+    let Some(from) = from else { return MOVE };
+    let (a, b) = (from.center(), to.center());
+    let pan = ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt() / to.size.w.max(from.size.w).max(1.0);
+    let zoom = (to.size.w.max(1.0) / from.size.w.max(1.0)).ln().abs();
+    (MOVE * (1.0 + 0.6 * pan + 0.4 * zoom)).min(MOVE_MAX)
 }
 
 /// Whether `outer` holds all of `inner`.
@@ -506,4 +520,16 @@ mod tests {
         let t = Timeline::new(doc.diagram(), &crate::build(doc.diagram(), &Default::default()));
         assert_eq!(t.focus.len(), 2);
     }
+
+    #[test]
+    fn far_camera_moves_take_longer() {
+        let here = Rect::new(0.0, 0.0, 400.0, 300.0);
+        assert_eq!(move_time(Some(here), here), MOVE);
+        let near = move_time(Some(here), Rect::new(100.0, 0.0, 400.0, 300.0));
+        let far = move_time(Some(here), Rect::new(3000.0, 2000.0, 400.0, 300.0));
+        let zoom = move_time(Some(here), Rect::new(0.0, 0.0, 1600.0, 1200.0));
+        assert!(MOVE < near && near < far && far <= MOVE_MAX, "{near} {far}");
+        assert!(zoom > MOVE);
+    }
 }
+

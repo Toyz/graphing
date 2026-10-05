@@ -34,7 +34,7 @@ animate {
 | `hide a` | Fades it out. |
 | `flow a -> b, e1` | Runs dots along those edges for the step. |
 | `highlight a` | Makes it glow for the step. |
-| `focus a, b` / `focus all` | Moves the camera onto them, or back out to everything. |
+| `focus a, b` / `focus all` | Moves the camera onto them, or back out to everything. A long pan or a big zoom takes longer (up to 1.8 s) so it still eases in and out. A step without a `focus` that shows something off camera widens the view to take it in. |
 | `move a 300 120` | Slides a shape (a group: everything in it) to a new place; lines re-route as it goes. |
 | `ease bounce` | How the step's fades, camera and moves run: `smooth` (default), `linear`, `snappy`, `bounce`. |
 
