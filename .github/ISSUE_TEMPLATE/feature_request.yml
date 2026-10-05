@@ -1,0 +1,26 @@
+name: Feature request
+description: An idea that would make graphing better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The job you want done, before any particular solution. "I want to show which services talk to the database" beats "add a button".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: "How you imagine it working: in the editor, in the `.gph` text, on the command line."
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you manage today?
+      description: Workarounds, or other tools you reach for instead.
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Sketches, screenshots or links to other tools that do it well.

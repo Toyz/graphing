@@ -1,10 +1,10 @@
 # Contributing to graphing
 
-Thanks for helping. Bug reports, notation requests, shape packs, docs fixes and code are all welcome.
+Thanks for helping. Bug reports, notation requests, shape packs, docs fixes and code are all welcome. Please keep things friendly; the [code of conduct](CODE_OF_CONDUCT.md) is short.
 
 ## Reporting a problem
 
-Open an issue with:
+Open an issue; the templates ask for what helps most. In short:
 
 - what you did, what you expected, and what happened;
 - the smallest `.gph` file that shows it (the text is the diagram, so paste it);

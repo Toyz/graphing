@@ -149,7 +149,7 @@ Everything below `graphing-app` is free of UI code, so other programs can embed 
 
 ## Status
 
-graphing is young and moving fast. The `.gph` format is settling but not frozen yet. Bug reports, notation requests and pull requests are all welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+graphing is young and moving fast. The `.gph` format is settling but not frozen yet. Bug reports, notation requests and pull requests are all welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md).
 
 The app lists every crate it is built from, with its license, under Settings > Open Source.
 

@@ -1,0 +1,68 @@
+name: Bug report
+description: Something does not work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The more of this you can fill in, the faster it gets fixed.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+      placeholder: |
+        I dragged a shape out of a group and...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the attached diagram
+        2. Select the "API" box
+        3. Press Delete
+  - type: textarea
+    id: diagram
+    attributes:
+      label: A diagram that shows it
+      description: The smallest `.gph` text that reproduces the problem. The text is the diagram, so pasting it is usually enough.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `graphing --version`, or the commit you built from.
+      placeholder: graphing 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux (Wayland)
+        - Linux (X11)
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it happen?
+      multiple: true
+      options:
+        - The editor (canvas, panels, menus)
+        - The source pane
+        - Export (SVG, PNG, GIF, WebM, SysML)
+        - Import (Mermaid, draw.io, SysML v2, Visio)
+        - The command line
+        - A shape pack or plugin
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, logs (run with `GRAPHING_TRACE=1` for timings), or a guess at the cause.

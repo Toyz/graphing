@@ -1,0 +1,32 @@
+name: Notation or shape request
+description: A diagram type, shape, container or line style graphing should know.
+labels: [notation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Notations are shape packs (plain JSON, see `docs/plugins.md`), so many of these can also be built as your own pack today. Tell us what you need either way.
+  - type: input
+    id: notation
+    attributes:
+      label: Notation
+      placeholder: "SDL, Petri nets, P&ID, Ishikawa..."
+    validations:
+      required: true
+  - type: textarea
+    id: shapes
+    attributes:
+      label: What it needs
+      description: The shapes, containers and line ends (arrows, markers) it uses, and anything special about how it is laid out.
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: Reference
+      description: A link to the standard, a picture of a typical diagram, or a tool that draws it well.
+  - type: textarea
+    id: use
+    attributes:
+      label: What you use it for
+      description: Helps us pick sensible defaults and an example.
