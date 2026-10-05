@@ -121,6 +121,8 @@ impl Timeline {
         let mut shifted: HashMap<String, (f64, f64)> = HashMap::new();
         let mut at = 0.0;
         let mut seen: HashSet<String> = HashSet::new();
+        // Where the camera is framed; `None` while it shows everything.
+        let mut camera: Option<Rect> = None;
         for step in &d.steps {
             let len = step.seconds.filter(|s| *s > 0.0).unwrap_or(DEFAULT_STEP);
             let ease = step.ease.unwrap_or_default();
@@ -150,7 +152,22 @@ impl Timeline {
                     pos.insert(n.clone(), dest);
                 }
             }
-            let (mut flows, mut glows) = (Vec::new(), Vec::new());
+            // The box around `ids` once this step's moves land.
+            let frame = |ids: &[String]| {
+                let offset = |id: &str| match (pos.get(id), start.get(id)) {
+                    (Some(p), Some(s)) => (p.x - s.x, p.y - s.y),
+                    _ => shifted.get(id).copied().unwrap_or_default(),
+                };
+                ids.iter()
+                    .filter_map(|id| {
+                        let (dx, dy) = offset(id);
+                        footprint(scene, id).map(|r| Rect::new(r.origin.x + dx, r.origin.y + dy, r.size.w, r.size.h))
+                    })
+                    .reduce(|a, b| a.union(b))
+                    .map(|r| r.inflate(FOCUS_PAD))
+            };
+            let (mut flows, mut glows, mut introduced) = (Vec::new(), Vec::new(), Vec::new());
+            let mut focused = false;
             for a in &step.actions {
                 let mut ids = Vec::new();
                 for target in &a.targets {
@@ -164,33 +181,40 @@ impl Timeline {
                             if seen.insert(id.clone()) && show {
                                 t.hidden_at_start.insert(id.clone());
                             }
+                            if show {
+                                introduced.push(id.clone());
+                            }
                             t.fades.entry(id).or_default().push((at, show, ease));
                         }
                     }
-                    Verb::Flow => flows.extend(ids.into_iter().filter(|id| t.ends.contains_key(id))),
-                    Verb::Highlight => glows.extend(ids),
+                    Verb::Flow => {
+                        introduced.extend(ids.iter().cloned());
+                        flows.extend(ids.into_iter().filter(|id| t.ends.contains_key(id)));
+                    }
+                    Verb::Highlight => {
+                        introduced.extend(ids.iter().cloned());
+                        glows.extend(ids);
+                    }
                     Verb::Focus => {
-                        // Framing where things are once this step's moves land.
-                        let offset = |id: &str| match (pos.get(id), start.get(id)) {
-                            (Some(p), Some(s)) => (p.x - s.x, p.y - s.y),
-                            _ => shifted.get(id).copied().unwrap_or_default(),
-                        };
-                        let rect = if a.targets.iter().any(|x| x == "all") {
-                            t.whole
-                        } else {
-                            ids.iter()
-                                .filter_map(|id| {
-                                    let (dx, dy) = offset(id);
-                                    footprint(scene, id).map(|r| Rect::new(r.origin.x + dx, r.origin.y + dy, r.size.w, r.size.h))
-                                })
-                                .reduce(|a, b| a.union(b))
-                                .map(|r| r.inflate(FOCUS_PAD))
-                        };
+                        let rect = if a.targets.iter().any(|x| x == "all") { t.whole } else { frame(&ids) };
                         if let Some(r) = rect {
+                            focused = true;
+                            camera = Some(r);
                             t.focus.push((at, r, ease));
                         }
                     }
                 }
+            }
+            // A step that brings in something the camera does not frame,
+            // without saying where to look, widens the view to take it in.
+            if !focused
+                && let Some(cam) = camera
+                && let Some(need) = frame(&introduced)
+                && !contains(cam, need)
+            {
+                let r = cam.union(need);
+                camera = Some(r);
+                t.focus.push((at, r, ease));
             }
             t.flows.push(flows);
             t.glows.push(glows);
@@ -306,6 +330,14 @@ impl Timeline {
         }
         s
     }
+}
+
+/// Whether `outer` holds all of `inner`.
+fn contains(outer: Rect, inner: Rect) -> bool {
+    inner.origin.x >= outer.origin.x - 0.5
+        && inner.origin.y >= outer.origin.y - 0.5
+        && inner.origin.x + inner.size.w <= outer.origin.x + outer.size.w + 0.5
+        && inner.origin.y + inner.size.h <= outer.origin.y + outer.size.h + 0.5
 }
 
 /// A node's box with any label under it, or a group's box.
@@ -456,5 +488,22 @@ mod tests {
         let peak = (1..140).map(|i| t.state(i as f64 / 100.0).moved.get("a").map_or(0.0, |p| p.x)).fold(0.0, f64::max);
         assert!(peak > 100.0, "{peak}");
         assert_eq!(t.state(2.0).moved["a"].x, 100.0);
+    }
+
+    #[test]
+    fn a_step_that_brings_something_in_keeps_it_in_view() {
+        // Step two frames `a`; step three shows `c`, far off, without a focus.
+        let doc = graphing_dsl::Document::parse("a\nb\nc\nlayout {\n  a 0 0\n  b 200 0\n  c 1400 900\n}\nanimate {\n  step { show a\n focus a }\n  step { show b }\n  step { show c\n highlight c }\n}\n");
+        let (d, scene) = (doc.diagram().clone(), crate::build(doc.diagram(), &Default::default()));
+        let t = Timeline::new(&d, &scene);
+        let c = scene.nodes.iter().find(|n| n.id == "c").unwrap().rect;
+        let cam = t.state(t.total).camera.expect("framed");
+        assert!(contains(cam, c), "{cam:?} misses {c:?}");
+        // The camera framed `a`, then widened for `b`, then for `c`.
+        assert_eq!(t.focus.len(), 3, "{:?}", t.focus);
+        // A step that says where to look is left alone.
+        let doc = graphing_dsl::Document::parse("a\nc\nlayout {\n  a 0 0\n  c 1400 900\n}\nanimate {\n  step { focus a }\n  step { show c\n focus a }\n}\n");
+        let t = Timeline::new(doc.diagram(), &crate::build(doc.diagram(), &Default::default()));
+        assert_eq!(t.focus.len(), 2);
     }
 }
