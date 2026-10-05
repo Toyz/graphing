@@ -1,2 +1,5 @@
 target/
 *.swp
+
+# Agent instructions live in AGENTS.md; no CLAUDE.md in this repo.
+CLAUDE.md

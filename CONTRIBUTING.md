@@ -53,7 +53,7 @@ cargo test --workspace -q
 ### Testing UI
 
 - Interaction tests use gpui's headless `TestAppContext` (`#[gpui_kit::test]`). See the tests in `crates/graphing-app/src/view/tests.rs` and `dock.rs`.
-- For screenshots, debug builds honour `GRAPHING_DEBUG_OPEN`. It can open the palette, a menu or settings, select shapes, preview an animation step, and more; the list is in `docs/debugging.md`.
+- For screenshots, debug builds honour `GRAPHING_DEBUG_OPEN`. It can open the palette, a menu or settings, select shapes, preview an animation step, and more. The list, and how to capture only graphing's window, are in [docs/debugging.md](docs/debugging.md).
 
 ## Dependencies and licenses
 
