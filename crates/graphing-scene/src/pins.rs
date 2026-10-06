@@ -335,6 +335,19 @@ pub fn place(r: Rect, pins: &[Pin], flow: Flow) -> Vec<(Point, crate::Side)> {
         .collect()
 }
 
+/// An execution pin's outline in pin radii around its centre: a tab with a
+/// pointed end, aimed along the flow (right on the sides, down on top and
+/// bottom), like Blueprint's.
+pub fn exec_tab(side: crate::Side) -> [(f64, f64); 5] {
+    match side {
+        crate::Side::Left | crate::Side::Right => [(-0.9, -1.0), (0.2, -1.0), (1.1, 0.0), (0.2, 1.0), (-0.9, 1.0)],
+        crate::Side::Top | crate::Side::Bottom => [(-1.0, -0.9), (1.0, -0.9), (1.0, 0.2), (0.0, 1.1), (-1.0, 0.2)],
+    }
+}
+
+/// Diagram units between the points of a flattened wire.
+const WIRE_STEP: f64 = 2.0;
+
 /// A wire from `a` leaving toward `sa` to `b` arriving from `sb`, as a
 /// smooth curve flattened into short segments.
 pub fn wire(a: Point, sa: Option<crate::Side>, b: Point, sb: Option<crate::Side>) -> Vec<Point> {
@@ -348,10 +361,13 @@ pub fn wire(a: Point, sa: Option<crate::Side>, b: Point, sb: Option<crate::Side>
         None => Point::new(from.x + (toward.x - from.x) * 0.3, from.y + (toward.y - from.y) * 0.3),
     };
     let (c1, c2) = (out(sa, b, a), out(sb, a, b));
-    const STEPS: usize = 24;
-    (0..=STEPS)
+    // Short enough steps that no corner shows at any zoom: the control
+    // polygon is never shorter than the curve, so it bounds the step count.
+    let dist = |p: Point, q: Point| ((q.x - p.x).powi(2) + (q.y - p.y).powi(2)).sqrt();
+    let steps = ((dist(a, c1) + dist(c1, c2) + dist(c2, b)) / WIRE_STEP).ceil().clamp(16.0, 400.0) as usize;
+    (0..=steps)
         .map(|i| {
-            let t = i as f64 / STEPS as f64;
+            let t = i as f64 / steps as f64;
             let u = 1.0 - t;
             let (w0, w1, w2, w3) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
             Point::new(w0 * a.x + w1 * c1.x + w2 * c2.x + w3 * b.x, w0 * a.y + w1 * c1.y + w2 * c2.y + w3 * b.y)

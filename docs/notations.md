@@ -60,7 +60,8 @@ x.value -> add.a
 
 - `in` and `out` take any number of pins, each `name` or `name: type`. A
   pin named or typed `exec` carries execution order rather than data and
-  draws as an arrow.
+  draws as an arrow tab; data pins are dots in their type's color. Both are
+  hollow until wired and solid once wired, as in Blueprint.
 - Inputs sit on the side flow comes from (left, or top when the diagram
   flows down) and outputs opposite. `in_side: top` or `out_side: bottom`
   moves a whole list; `sides: [carry: bottom]` moves one pin.

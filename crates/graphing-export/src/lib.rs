@@ -1117,20 +1117,18 @@ impl Kit<'_> {
         }
     }
 
-    /// A node-graph pin: a dot (data) or an arrow (execution) in its type's
-    /// color, its name inside the node.
+    /// A node-graph pin, after Blueprint: execution pins are arrow tabs,
+    /// data pins dots in their type's color. Hollow until wired, solid once
+    /// wired. Its name sits inside the node.
     fn pin(&self, s: &mut String, p: &PortBox, pin: &pins::Pin, inside: bool) {
         let (c, r) = (p.at, pins::PIN_R);
         let color = if pin.exec() { hex(self.t.edge) } else { hex(pins::color(pin.shown_type())) };
+        let fill = if pin.wired > 0 { color.as_str() } else { "none" };
         if pin.exec() {
-            let pts = match p.side {
-                Side::Left | Side::Right => [(c.x - r, c.y - r), (c.x + r, c.y), (c.x - r, c.y + r)],
-                Side::Top | Side::Bottom => [(c.x - r, c.y - r), (c.x + r, c.y - r), (c.x, c.y + r)],
-            };
-            let pts = pts.iter().map(|(x, y)| format!("{},{}", n(*x), n(*y))).collect::<Vec<_>>().join(" ");
-            let _ = writeln!(s, r#"<polygon points="{pts}" fill="{color}"/>"#);
+            let pts = pins::exec_tab(p.side).iter().map(|&(x, y)| format!("{},{}", n(c.x + r * x), n(c.y + r * y))).collect::<Vec<_>>().join(" ");
+            let _ = writeln!(s, r#"<polygon points="{pts}" fill="{fill}" stroke="{color}" stroke-width="1.5" stroke-linejoin="round"/>"#);
         } else {
-            let _ = writeln!(s, r#"<circle cx="{}" cy="{}" r="{}" fill="{color}" stroke="{}"/>"#, n(c.x), n(c.y), n(r), hex(self.t.bg));
+            let _ = writeln!(s, r#"<circle cx="{}" cy="{}" r="{}" fill="{fill}" stroke="{color}" stroke-width="1.5"/>"#, n(c.x), n(c.y), n(r - 0.75));
         }
         let caption = pin.caption();
         if caption.is_empty() {
@@ -1201,7 +1199,11 @@ impl Kit<'_> {
             let _ = write!(d, "{}{} {} ", if i == 0 { "M" } else { "L" }, n(p.x), n(p.y));
         }
         let dash = if e.dashed { r#" stroke-dasharray="6 4""# } else { "" };
-        let width = if self.technical { "1.25" } else { "1.5" };
+        let width = match (e.wire, self.technical) {
+            (true, _) => "2",
+            (false, true) => "1.25",
+            (false, false) => "1.5",
+        };
         let _ = writeln!(s, r#"<path d="{}" fill="none" stroke="{color}" stroke-width="{width}"{dash}/>"#, d.trim_end());
         let k = e.points.len();
         end(s, e.head, e.points[k - 2], e.points[k - 1], &color, &hex(t.bg));

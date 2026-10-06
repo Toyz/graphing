@@ -356,6 +356,8 @@ pub struct EdgeLine {
     pub stroke: Option<u32>,
     /// Wired wrong (see `Scene::problems`); the canvas marks it.
     pub problem: bool,
+    /// Joins two pins: a smooth curve, drawn a little heavier.
+    pub wire: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -711,6 +713,7 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
                 label: e.label.clone(),
                 stroke: d.edge_prop(e, "stroke").and_then(color),
                 problem: false,
+                wire: false,
             });
             continue;
         }
@@ -744,6 +747,7 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
                     label: e.label.clone(),
                     stroke: d.edge_prop(e, "stroke").and_then(color),
                     problem: false,
+                    wire: false,
                 });
                 continue;
             }
@@ -767,6 +771,7 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
                 label: e.label.clone(),
                 stroke: d.edge_prop(e, "stroke").and_then(color).or(typed),
                 problem: false,
+                wire: true,
             });
             continue;
         }
@@ -794,6 +799,7 @@ pub fn build(d: &Diagram, moved: &HashMap<String, Point>) -> Scene {
             label: e.label.clone(),
             stroke: d.edge_prop(e, "stroke").and_then(color),
             problem: false,
+            wire: false,
         });
     }
     scene.problems = wiring.problems;

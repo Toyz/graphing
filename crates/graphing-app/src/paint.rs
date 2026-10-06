@@ -820,26 +820,26 @@ fn node_header(f: &Frame, n: &NodeBox, b: Bounds<Pixels>, stroke: Hsla, window: 
     line.paint(point(b.origin.x + f.view.len(12.0), band.origin.y + (band.size.height - lh) / 2.0), lh, TextAlign::Left, None, window, cx).ok();
 }
 
-/// A node-graph pin: a dot (data) or an arrow (execution) in its type's
-/// color, its name inside the node.
+/// A node-graph pin, after Blueprint: execution pins are arrow tabs, data
+/// pins dots in their type's color. Hollow until wired, solid once wired.
+/// Its name sits inside the node.
 fn pin(f: &Frame, p: &PortBox, pin: &pins::Pin, inside: bool, window: &mut Window, cx: &mut App) {
     let c = f.view.pt(p.at);
     let r = f.view.len(pins::PIN_R as f32);
     let color = if pin.exec() { f.palette.edge } else { f.rgb(pins::color(pin.shown_type())) };
+    let wired = pin.wired > 0;
+    let line = f.view.len(1.5);
     if pin.exec() {
-        // Points along the flow: right on the sides, down on top and bottom.
-        let tri = match p.side {
-            Side::Left | Side::Right => [point(c.x - r, c.y - r), point(c.x + r, c.y), point(c.x - r, c.y + r)],
-            Side::Top | Side::Bottom => [point(c.x - r, c.y - r), point(c.x + r, c.y - r), point(c.x, c.y + r)],
-        };
-        let mut pb = PathBuilder::fill();
-        pb.add_polygon(&tri, true);
+        let tab: Vec<Point<Pixels>> = pins::exec_tab(p.side).iter().map(|&(x, y)| point(c.x + r * x as f32, c.y + r * y as f32)).collect();
+        let mut pb = if wired { PathBuilder::fill() } else { PathBuilder::stroke(line) };
+        pb.add_polygon(&tab, true);
         if let Ok(path) = pb.build() {
             window.paint_path(path, color);
         }
     } else {
         let dot = Bounds { origin: point(c.x - r, c.y - r), size: size(r * 2.0, r * 2.0) };
-        window.paint_quad(quad(dot, r, color, px(1.0), f.palette.bg, BorderStyle::default()));
+        let fill = if wired { color } else { gpui_kit::transparent_black() };
+        window.paint_quad(quad(dot, r, fill, line, color, BorderStyle::default()));
     }
     let size_px = pins::PIN_PT as f32 * f.view.zoom;
     let caption = pin.caption();
@@ -1001,7 +1001,11 @@ fn edge(f: &Frame, e: &EdgeLine, window: &mut Window, cx: &mut App) {
         (false, true) => f.palette.danger,
         (false, false) => f.hex(e.stroke, f.palette.edge),
     };
-    let base = if tech { 1.25 } else { 1.5 };
+    let base = match (e.wire, tech) {
+        (true, _) => 2.0,
+        (false, true) => 1.25,
+        (false, false) => 1.5,
+    };
     let mut pb = PathBuilder::stroke(px(if selected { base + 1.0 } else { base }));
     if e.dashed {
         pb = pb.dash_array(&[px(6.0), px(4.0)]);
