@@ -1,10 +1,14 @@
+// Release builds on Windows are a windowed app, so opening graphing shows
+// no console window; see `attach_console` for the command line.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "graphing", version, about = "Visual graph and diagram builder")]
+#[command(name = "graphing", version = graphing_app::VERSION, about = "Visual graph and diagram builder")]
 struct Cli {
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -60,7 +64,24 @@ enum Cmd {
     Info { file: PathBuf },
 }
 
+/// A windowed program starts without a console. Run from a terminal (the
+/// CLI commands), it borrows that terminal's console so its output shows.
+#[cfg(windows)]
+fn attach_console() {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn AttachConsole(process: u32) -> i32;
+    }
+    const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+    // SAFETY: a plain Win32 call; failing (no parent console) is fine.
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
 fn main() -> ExitCode {
+    #[cfg(windows)]
+    attach_console();
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
     let cli = Cli::parse();
     if cli.cmd.is_some() {

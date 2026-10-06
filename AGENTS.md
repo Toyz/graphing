@@ -46,6 +46,12 @@ cargo test --workspace -q
 - Destructive actions confirm through `confirm.rs` (`Workspace::ask`), never a
   native prompt.
 
+## Versions and releases
+
+- Never bump versions in `Cargo.toml`. The version comes from git tags
+  (`crates/graphing-app/build.rs` sets `GRAPHING_VERSION`); pushing a
+  `v*` tag runs `.github/workflows/release.yml`. See `docs/releasing.md`.
+
 ## Design system (`graphing-ui`)
 
 - All chrome is built from `graphing_ui::kit` components and

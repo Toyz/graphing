@@ -99,7 +99,9 @@ Timing diagrams use WaveDrom's letters (`p.....`, `0.1..`, `x=.=.`). The full li
 
 ## Getting started
 
-graphing builds from source with a recent stable Rust (1.88 or newer).
+Builds for Linux, Windows and macOS are on the [Releases](https://github.com/Toyz/graphing/releases) page. They are unsigned for now: on Windows choose "More info, Run anyway", on macOS right-click the app and choose Open the first time.
+
+graphing also builds from source with a recent stable Rust (1.88 or newer).
 
 ```sh
 git clone https://github.com/Toyz/graphing

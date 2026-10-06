@@ -58,6 +58,29 @@ fn main() {
     }
     let code = render(&entries, &texts.all, &license, &commit);
     std::fs::write(PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("open_source.rs"), code).unwrap();
+    println!("cargo:rerun-if-env-changed=GRAPHING_VERSION");
+    println!("cargo:rustc-env=GRAPHING_VERSION={}", version(&root));
+}
+
+/// graphing's version, from git rather than Cargo.toml (nobody has to
+/// remember to bump it): `GRAPHING_VERSION` when a release build sets it
+/// from its tag, else the nearest `v*` tag as `git describe` puts it
+/// (`0.2.0-rc.1`, or `0.2.0-rc.1-4-gabc1234` four commits on), else
+/// Cargo's with `-dev`.
+fn version(root: &Path) -> String {
+    if let Ok(v) = std::env::var("GRAPHING_VERSION")
+        && !v.trim().is_empty()
+    {
+        return v.trim().trim_start_matches('v').to_string();
+    }
+    let described = Command::new("git")
+        .args(["describe", "--tags", "--match", "v[0-9]*", "--dirty"])
+        .current_dir(root)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().trim_start_matches('v').to_string());
+    described.unwrap_or_else(|| format!("{}-dev", std::env::var("CARGO_PKG_VERSION").unwrap_or_default()))
 }
 
 /// Where git keeps what says which commit is checked out: HEAD, the
@@ -65,7 +88,7 @@ fn main() {
 /// apart from the branches it shares.
 fn git_files(root: &Path) -> Vec<PathBuf> {
     let output = Command::new("git")
-        .args(["rev-parse", "--git-path", "HEAD", "--git-path", "refs/heads", "--git-path", "packed-refs"])
+        .args(["rev-parse", "--git-path", "HEAD", "--git-path", "refs/heads", "--git-path", "refs/tags", "--git-path", "packed-refs"])
         .current_dir(root)
         .output();
     match output {

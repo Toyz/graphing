@@ -172,6 +172,9 @@ pub struct OpenRecent {
     pub index: usize,
 }
 
+/// graphing's version, from its git tag (see build.rs): `0.2.0-rc.1`.
+pub const VERSION: &str = env!("GRAPHING_VERSION");
+
 /// Open a window with `files` as tabs (or the last session when empty).
 pub fn run(files: Vec<PathBuf>) -> anyhow::Result<()> {
     gpui_kit::application().with_assets(gpui_kit::assets::AllAssets).run(move |cx: &mut App| {

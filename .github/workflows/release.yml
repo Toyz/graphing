@@ -1,0 +1,199 @@
+# Releases from tags: push `v0.2.0` (or `v0.2.0-rc.1`, published as a
+# prerelease) and this builds Linux, Windows and macOS and publishes them
+# on GitHub. The version comes from the tag; Cargo.toml is never bumped by
+# hand. Running it by hand (Actions > Release > Run workflow) builds the
+# same files as artifacts and publishes nothing. See docs/releasing.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version for a dry run, e.g. 0.2.0-rc.1 (nothing is published)"
+        type: string
+        default: "0.0.0-dry.1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  # Never stop a run halfway through uploading.
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - id: v
+        name: Version from the tag
+        env:
+          INPUT: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then v="${GITHUB_REF_NAME#v}"; else v="${INPUT#v}"; fi
+          if ! printf '%s' "$v" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$v' is not a version like 1.2.3 or 1.2.3-rc.1"
+            exit 1
+          fi
+          case "$v" in *-*) pre=true ;; *) pre=false ;; esac
+          echo "version=$v" >>"$GITHUB_OUTPUT"
+          echo "prerelease=$pre" >>"$GITHUB_OUTPUT"
+          echo "### graphing $v" >>"$GITHUB_STEP_SUMMARY"
+
+  linux:
+    needs: version
+    # The oldest supported image, so the binary runs on older glibc too.
+    runs-on: ubuntu-22.04
+    env:
+      GRAPHING_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-x11-dev libwayland-dev libvulkan-dev libfontconfig-dev \
+            libx11-xcb-dev libxcb1-dev libfreetype-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-linux
+      - run: cargo build --release --locked -p graphing-bin
+      - name: Package
+        run: |
+          name="graphing-$GRAPHING_VERSION-linux-x86_64"
+          mkdir -p "dist/$name"
+          cp target/release/graphing README.md LICENSE-MIT LICENSE-APACHE "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    env:
+      GRAPHING_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-windows
+      - run: cargo build --release --locked -p graphing-bin
+      - name: Package
+        shell: pwsh
+        run: |
+          $name = "graphing-$env:GRAPHING_VERSION-windows-x64"
+          New-Item -ItemType Directory -Force "dist/$name" | Out-Null
+          Copy-Item target/release/graphing.exe, README.md, LICENSE-MIT, LICENSE-APACHE "dist/$name/"
+          Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.zip
+          if-no-files-found: error
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    env:
+      GRAPHING_VERSION: ${{ needs.version.outputs.version }}
+      # Signing is optional: with these unset the app is built unsigned
+      # (users right-click > Open the first time) and the run says so.
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-macos
+      - name: Build for Apple silicon and Intel
+        run: |
+          cargo build --release --locked -p graphing-bin --target aarch64-apple-darwin
+          cargo build --release --locked -p graphing-bin --target x86_64-apple-darwin
+      - name: Bundle graphing.app
+        run: |
+          app=dist/graphing.app
+          mkdir -p "$app/Contents/MacOS"
+          lipo -create -output "$app/Contents/MacOS/graphing" \
+            target/aarch64-apple-darwin/release/graphing target/x86_64-apple-darwin/release/graphing
+          sed "s/@VERSION@/$GRAPHING_VERSION/g" packaging/macos/Info.plist >"$app/Contents/Info.plist"
+      - name: Sign
+        if: env.APPLE_CERTIFICATE != ''
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode >"$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$RUNNER_TEMP" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$RUNNER_TEMP" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$RUNNER_TEMP" "$keychain"
+          codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" dist/graphing.app
+      - name: Notarize
+        if: env.APPLE_CERTIFICATE != '' && env.APPLE_ID != ''
+        run: |
+          ditto -c -k --keepParent dist/graphing.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple dist/graphing.app
+      - name: Unsigned
+        if: env.APPLE_CERTIFICATE == ''
+        run: echo "::warning::macOS app is unsigned (no APPLE_CERTIFICATE secret)"
+      - name: Package
+        run: |
+          name="graphing-$GRAPHING_VERSION-macos-universal"
+          cp README.md LICENSE-MIT LICENSE-APACHE dist/
+          (cd dist && ditto -c -k --keepParent graphing.app "$name.zip")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*.zip
+          if-no-files-found: error
+
+  publish:
+    # Only for a pushed tag; a dry run stops at the artifacts.
+    if: github.event_name == 'push'
+    needs: [version, linux, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: (cd dist && sha256sum * >SHA256SUMS.txt && cat SHA256SUMS.txt)
+      - name: Release
+        run: |
+          flags=()
+          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release upload "v$VERSION" dist/* --clobber
+          else
+            gh release create "v$VERSION" dist/* --title "graphing $VERSION" --generate-notes --verify-tag "${flags[@]}"
+          fi

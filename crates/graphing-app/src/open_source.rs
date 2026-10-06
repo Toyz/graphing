@@ -25,8 +25,8 @@ mod generated {
 }
 pub use generated::*;
 
-/// graphing's version.
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// graphing's version, from its git tag (see build.rs).
+pub const VERSION: &str = env!("GRAPHING_VERSION");
 
 pub use crate::license::{elected, license_ids};
 
