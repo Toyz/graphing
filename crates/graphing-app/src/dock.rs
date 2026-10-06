@@ -726,7 +726,12 @@ mod tests {
     #[gpui_kit::test]
     fn settings_tab_records_a_shortcut(cx: &mut TestAppContext) {
         let (ws, cx) = open(cx, Vec::new());
-        cx.update(|window, cx| ws.update(cx, |w, cx| w.show_tool(Tool::Settings, window, cx)));
+        cx.update(|window, cx| {
+            ws.update(cx, |w, cx| {
+                w.show_tool(Tool::Settings, window, cx);
+                w.settings_section = crate::settings_pane::Section::Shortcuts;
+            })
+        });
         cx.run_until_parked();
         assert!(ws.read_with(cx, |w, cx| w.shown(Tool::Settings, cx)));
         cx.update(|window, cx| {

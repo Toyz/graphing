@@ -1,10 +1,11 @@
-//! The Settings tab, laid out like VS Code's settings editor: one search box
-//! over every setting and shortcut, a table of contents, and rows titled
-//! `Section: Name` with a description, their settings.json key and a mark
-//! when changed from the default. Every change writes settings.json at once
-//! and applies live; the file stays hand-editable and unknown keys survive.
+//! The Settings tab: one search box over every setting, shortcut and crate,
+//! and a page per section picked from the side. Rows carry a description,
+//! their settings.json key and a mark when changed from the default. Every
+//! change writes settings.json at once and applies live; the file stays
+//! hand-editable and unknown keys survive.
 
 use gpui_kit::component::Icon;
+use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::{
     AnyElement, App, Context, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, SharedString,
@@ -282,19 +283,25 @@ impl Workspace {
     pub(crate) fn render_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let k = cx.ui();
         let query = self.settings_query.read(cx).value().to_string();
+        let searching = !query.trim().is_empty();
         let defs = defs();
-        let shortcuts: Vec<ShortcutRow> = self.shortcut_rows(window, cx).into_iter().filter(|r| r.matches(&query)).collect();
-        let crates = oss_matches(&query);
-        // Sections with something to show, in order.
-        let shown: Vec<Section> = Section::ALL
-            .into_iter()
-            .filter(|s| match s {
-                Section::Shortcuts => !shortcuts.is_empty(),
-                Section::OpenSource => !crates.is_empty(),
-                _ => defs.iter().any(|d| d.section == *s && def_matches(d, &query)),
-            })
-            .collect();
-        let found = defs.iter().filter(|d| def_matches(d, &query)).count() + shortcuts.len() + crates.len();
+        // Shortcuts and crates cost the most to gather, so only the search or
+        // their own page does.
+        let shortcuts: Vec<ShortcutRow> = if searching || self.settings_section == Section::Shortcuts {
+            self.shortcut_rows(window, cx).into_iter().filter(|r| r.matches(&query)).collect()
+        } else {
+            Vec::new()
+        };
+        let crates = if searching || self.settings_section == Section::OpenSource { oss_matches(&query) } else { Vec::new() };
+        let count = |s: Section| match s {
+            Section::Shortcuts => shortcuts.len(),
+            Section::OpenSource => crates.len(),
+            _ => defs.iter().filter(|d| d.section == s && def_matches(d, &query)).count(),
+        };
+        // One page at a time. A search keeps the page while it finds
+        // something there, else shows the first page that does.
+        let page = if !searching || count(self.settings_section) > 0 { Some(self.settings_section) } else { Section::ALL.into_iter().find(|s| count(*s) > 0) };
+        let found: usize = Section::ALL.into_iter().map(count).sum();
 
         let search = kit::text_input(&self.settings_query).prefix(Icon::new(Lucide::Search).size(ICON_SM).text_color(k.text_faint));
         let header = div()
@@ -307,81 +314,58 @@ impl Workspace {
             .border_b_1()
             .border_color(k.border)
             .child(div().flex_1().min_w_0().child(search))
-            .child(div().flex_none().text_size(TEXT_XS).text_color(k.text_faint).child(if query.is_empty() { String::new() } else { format!("{found} found") }))
+            .child(div().flex_none().text_size(TEXT_XS).text_color(k.text_faint).child(if searching { format!("{found} found") } else { String::new() }))
             .child(TextButton::new("set-open-file", "Edit JSON").icon(Lucide::FileCode).on_click(cx.listener(|ws, _, window, cx| ws.open_settings_file(window, cx))));
 
-        // Table of contents: jump to a section.
+        // The pages. While searching each shows how much it found; one with
+        // nothing clears the search when picked.
         let toc = div().flex_none().w(SIDEBAR_W * 0.8).pt(GAP_4).px(GAP_2).flex().flex_col().gap(GAP_0).children(Section::ALL.into_iter().map(|s| {
-            let ix = shown.iter().position(|x| *x == s);
-            let active = self.settings_section == Some(s) && ix.is_some();
-            let count = match s {
-                Section::Shortcuts => shortcuts.len(),
-                Section::OpenSource => crates.len(),
-                _ => defs.iter().filter(|d| d.section == s && def_matches(d, &query)).count(),
-            };
-            let mut row = kit::Row::new(SharedString::from(format!("toc-{}", s.title())), s.title()).icon(s.icon()).selected(active);
-            if !query.is_empty() {
-                row = row.meta(count.to_string());
+            let n = count(s);
+            let mut row = kit::Row::new(SharedString::from(format!("toc-{}", s.title())), s.title()).icon(s.icon()).selected(page == Some(s));
+            if searching {
+                row = row.meta(n.to_string());
             }
-            row.on_click(cx.listener(move |ws, _, _, cx| {
-                if let Some(ix) = ix {
-                    ws.settings_section = Some(s);
-                    ws.settings_scroll.scroll_to_top_of_item(ix);
-                    cx.notify();
+            row.on_click(cx.listener(move |ws, _, window, cx| {
+                ws.settings_section = s;
+                if searching && n == 0 {
+                    ws.settings_query.update(cx, |q, cx| q.set_value("", window, cx));
                 }
+                cx.notify();
             }))
         }));
 
-        let mut body: Vec<AnyElement> = Vec::new();
-        for s in &shown {
-            let content = if *s == Section::Shortcuts {
-                self.render_shortcuts(shortcuts.as_slice(), cx)
-            } else if *s == Section::OpenSource {
-                self.render_open_source(&crates, cx)
-            } else {
-                let rows: Vec<AnyElement> = defs.iter().filter(|d| d.section == *s && def_matches(d, &query)).map(|d| self.setting_row(d, cx)).collect();
-                div().flex().flex_col().gap(GAP_1).children(rows).into_any_element()
-            };
-            body.push(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(GAP_2)
-                    .pb(GAP_5)
-                    .child(div().text_size(TEXT_LG).font_weight(gpui_kit::FontWeight::SEMIBOLD).text_color(k.heading).child(s.title()))
-                    .child(content)
-                    .into_any_element(),
-            );
-        }
-        if body.is_empty() {
-            body.push(kit::empty_state(Lucide::SearchX, "No settings found", "Try another word, a setting key like canvas.grid, or keys like ctrl+s", cx).into_any_element());
-        }
-
-        div()
-            .size_full()
-            .bg(k.bg)
-            .flex()
-            .flex_col()
-            .child(header)
-            .child(
+        let body = match page {
+            None => div()
+                .flex_1()
+                .min_w_0()
+                .pt(GAP_5)
+                .child(kit::empty_state(Lucide::SearchX, "No settings found", "Try another word, a setting key like canvas.grid, or keys like ctrl+s", cx))
+                .into_any_element(),
+            Some(Section::OpenSource) => self.render_open_source(crates, cx),
+            Some(s) => {
+                let content = if s == Section::Shortcuts {
+                    self.render_shortcuts(shortcuts.as_slice(), cx)
+                } else {
+                    let rows: Vec<AnyElement> = defs.iter().filter(|d| d.section == s && def_matches(d, &query)).map(|d| self.setting_row(d, cx)).collect();
+                    div().flex().flex_col().gap(GAP_1).children(rows).into_any_element()
+                };
                 div()
                     .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .child(toc)
-                    .child(
-                        div()
-                            .id("settings-body")
-                            .flex_1()
-                            .min_w_0()
-                            .overflow_y_scroll()
-                            .track_scroll(&self.settings_scroll)
-                            .px(GAP_5)
-                            .pt(GAP_4)
-                            .children(body.into_iter().map(|b| div().max_w(SETTINGS_W).child(b))),
-                    ),
-            )
-            .into_any_element()
+                    .min_w_0()
+                    .h_full()
+                    .px(GAP_5)
+                    .pt(GAP_4)
+                    .pb(GAP_5)
+                    .child(div().max_w(SETTINGS_W).flex().flex_col().gap(GAP_2).child(page_title(s, cx)).child(content))
+                    .debug_selector(|| "settings-page".into())
+                    .overflow_y_scrollbar()
+                    // Each page keeps its own scroll position.
+                    .id(SharedString::from(format!("settings-page-{}", s.title())))
+                    .into_any_element()
+            }
+        };
+
+        div().size_full().bg(k.bg).flex().flex_col().child(header).child(div().flex_1().min_h_0().flex().child(toc).child(body)).into_any_element()
     }
 
     /// `Section: Title`, description, control; an accent bar and a reset
@@ -447,7 +431,6 @@ impl Workspace {
                     .items_center()
                     .gap(GAP_1)
                     .text_size(TEXT_MD)
-                    .child(div().text_color(k.text_muted).child(format!("{}:", d.section.title())))
                     .child(div().font_weight(gpui_kit::FontWeight::SEMIBOLD).text_color(k.text).child(d.title))
                     .when(modified, |el| el.child(div().pl(GAP_1).text_size(TEXT_XS).text_color(k.accent).child("Modified")))
                     .child(div().flex_1())
@@ -576,7 +559,26 @@ impl Workspace {
 
     /// What graphing is built from: a summary of the licenses, then every
     /// crate with its license; open one for its source and license texts.
-    fn render_open_source(&self, list: &[usize], cx: &mut Context<Self>) -> AnyElement {
+    /// Hundreds of crates, so only the rows on screen are built.
+    fn render_open_source(&mut self, crates: Vec<usize>, cx: &mut Context<Self>) -> AnyElement {
+        if self.oss_shown != crates {
+            self.oss_list.reset(crates.len() + 1);
+            self.oss_shown = crates;
+        }
+        // Rows not drawn yet count as closed rows, so the scrollbar is right
+        // from the start. The list forgets this whenever its width changes,
+        // so it is said again each time; measured rows keep their height.
+        self.oss_list.clone().with_uniform_item_height(ROW_H + GAP_1);
+        let ws = cx.entity().downgrade();
+        let list = gpui_kit::list(self.oss_list.clone(), move |ix, _, cx| {
+            let item = ws.update(cx, |ws, cx| if ix == 0 { ws.oss_intro(cx) } else { ws.oss_row(ws.oss_shown[ix - 1], cx) }).unwrap_or_else(|_| div().into_any_element());
+            div().px(GAP_5).when(ix == 0, |d| d.pt(GAP_4)).child(div().max_w(SETTINGS_W).child(item)).into_any_element()
+        })
+        .size_full();
+        div().flex_1().min_w_0().h_full().relative().child(list).vertical_scrollbar(&self.oss_list).into_any_element()
+    }
+
+    fn oss_intro(&self, cx: &mut Context<Self>) -> AnyElement {
         use crate::open_source::{self as oss, CRATES};
         let k = cx.ui();
         let counts = oss::family_counts();
@@ -615,86 +617,102 @@ impl Workspace {
             )
             .child(div().flex().flex_wrap().gap(GAP_2).children(pills));
 
-        let rows = list.iter().map(|&i| {
-            let c = &CRATES[i];
-            let open = self.oss_open == Some(i);
-            let family = &oss::families()[i];
-            let strict = oss::has_conditions(family);
-            let repo = c.repository;
-            let head = div()
-                .id(SharedString::from(format!("oss-{i}")))
-                .h(ROW_H + GAP_1)
-                .px(GAP_3)
-                .flex()
-                .items_center()
-                .gap(GAP_2)
-                .rounded(ROUND_SM)
-                .cursor_pointer()
-                .hover(|d| d.bg(k.chrome))
-                .on_click(cx.listener(move |ws, _, _, cx| {
-                    ws.oss_open = if ws.oss_open == Some(i) { None } else { Some(i) };
-                    cx.notify();
+        div().flex().flex_col().gap(GAP_2).pb(GAP_2).child(page_title(Section::OpenSource, cx)).child(intro).into_any_element()
+    }
+
+    /// One crate; open, its license details and texts.
+    fn oss_row(&self, i: usize, cx: &mut Context<Self>) -> AnyElement {
+        use crate::open_source::{self as oss, CRATES};
+        let k = cx.ui();
+        let c = &CRATES[i];
+        let open = self.oss_open == Some(i);
+        let family = &oss::families()[i];
+        let strict = oss::has_conditions(family);
+        let repo = c.repository;
+        let head = div()
+            .id(SharedString::from(format!("oss-{i}")))
+            .h(ROW_H + GAP_1)
+            .px(GAP_3)
+            .flex()
+            .items_center()
+            .gap(GAP_2)
+            .rounded(ROUND_SM)
+            .cursor_pointer()
+            .hover(|d| d.bg(k.chrome))
+            .on_click(cx.listener(move |ws, _, _, cx| ws.toggle_oss(i, cx)))
+            .child(Icon::new(if open { Lucide::ChevronDown } else { Lucide::ChevronRight }).size(ICON_SM).text_color(k.text_faint))
+            .child(div().flex_none().text_size(TEXT_SM).text_color(k.text).child(c.name))
+            .child(div().flex_none().text_size(TEXT_XS).text_color(k.text_faint).child(c.version))
+            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(TEXT_XS).text_color(k.text_faint).child(c.description))
+            .child(div().flex_none().text_size(TEXT_XS).font_family(cx.mono()).text_color(if strict { k.warning } else { k.text_muted }).child(family.clone()))
+            .when(!repo.is_empty(), |el| {
+                el.child(IconButton::new(SharedString::from(format!("oss-src-{i}")), Lucide::ExternalLink).small().tooltip(repo).on_click(move |_, _, cx| {
+                    cx.stop_propagation();
+                    cx.open_url(repo);
                 }))
-                .child(Icon::new(if open { Lucide::ChevronDown } else { Lucide::ChevronRight }).size(ICON_SM).text_color(k.text_faint))
-                .child(div().flex_none().text_size(TEXT_SM).text_color(k.text).child(c.name))
-                .child(div().flex_none().text_size(TEXT_XS).text_color(k.text_faint).child(c.version))
-                .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().text_size(TEXT_XS).text_color(k.text_faint).child(c.description))
-                .child(div().flex_none().text_size(TEXT_XS).font_family(cx.mono()).text_color(if strict { k.warning } else { k.text_muted }).child(family.clone()))
-                .when(!repo.is_empty(), |el| {
-                    el.child(IconButton::new(SharedString::from(format!("oss-src-{i}")), Lucide::ExternalLink).small().tooltip(repo).on_click(move |_, _, cx| {
-                        cx.stop_propagation();
-                        cx.open_url(repo);
-                    }))
-                });
-            let body = open.then(|| {
-                let field = |label: &'static str, value: String| {
-                    div()
-                        .flex()
-                        .gap(GAP_2)
-                        .text_size(TEXT_SM)
-                        .child(div().flex_none().w(HIT_LG * 2.5).text_color(k.text_faint).child(label))
-                        .child(div().flex_1().min_w_0().text_color(k.text).child(value))
-                };
-                let texts = oss::texts_for(c, family);
+            });
+        let body = open.then(|| {
+            let field = |label: &'static str, value: String| {
                 div()
                     .flex()
-                    .flex_col()
                     .gap(GAP_2)
-                    .pl(GAP_5)
-                    .pr(GAP_3)
-                    .pb(GAP_3)
-                    .child(field("License", c.license.to_string()))
-                    .when(c.license != family.as_str(), |el| el.child(field("Taken under", family.clone())))
-                    .when(!c.authors.is_empty(), |el| el.child(field("Authors", c.authors.to_string())))
-                    .when(!repo.is_empty(), |el| el.child(field("Source", format!("{repo} (version {})", c.version))))
-                    .when(strict, |el| el.child(field("Note", "Used unmodified; its source is at the address above.".to_string())))
-                    .when(texts.is_empty(), |el| el.child(div().text_size(TEXT_SM).text_color(k.text_faint).child("This crate ships no license file; its license is the one named above.")))
-                    .children(texts.into_iter().enumerate().map(|(t, (name, text))| {
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(GAP_1)
-                            .child(div().flex().items_center().gap(GAP_1).text_size(TEXT_XS).text_color(k.text_muted).child(Icon::new(Lucide::FileText).size(ICON_SM)).child(name))
-                            .child(
-                                div()
-                                    .id(SharedString::from(format!("oss-text-{i}-{t}")))
-                                    .max_h(LICENSE_TEXT_H)
-                                    .overflow_y_scroll()
-                                    .p(GAP_3)
-                                    .rounded(ROUND_SM)
-                                    .bg(k.chrome)
-                                    .border_1()
-                                    .border_color(k.border)
-                                    .text_size(TEXT_XS)
-                                    .font_family(cx.mono())
-                                    .text_color(k.text_muted)
-                                    .child(text),
-                            )
-                    }))
-            });
-            div().flex().flex_col().child(head).children(body)
+                    .text_size(TEXT_SM)
+                    .child(div().flex_none().w(HIT_LG * 2.5).text_color(k.text_faint).child(label))
+                    .child(div().flex_1().min_w_0().text_color(k.text).child(value))
+            };
+            let texts = oss::texts_for(c, family);
+            div()
+                .flex()
+                .flex_col()
+                .gap(GAP_2)
+                .pl(GAP_5)
+                .pr(GAP_3)
+                .pb(GAP_3)
+                .child(field("License", c.license.to_string()))
+                .when(c.license != family.as_str(), |el| el.child(field("Taken under", family.clone())))
+                .when(!c.authors.is_empty(), |el| el.child(field("Authors", c.authors.to_string())))
+                .when(!repo.is_empty(), |el| el.child(field("Source", format!("{repo} (version {})", c.version))))
+                .when(strict, |el| el.child(field("Note", "Used unmodified; its source is at the address above.".to_string())))
+                .when(texts.is_empty(), |el| el.child(div().text_size(TEXT_SM).text_color(k.text_faint).child("This crate ships no license file; its license is the one named above.")))
+                .children(texts.into_iter().enumerate().map(|(t, (name, text))| {
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(GAP_1)
+                        .child(div().flex().items_center().gap(GAP_1).text_size(TEXT_XS).text_color(k.text_muted).child(Icon::new(Lucide::FileText).size(ICON_SM)).child(name))
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("oss-text-{i}-{t}")))
+                                .max_h(LICENSE_TEXT_H)
+                                .overflow_y_scroll()
+                                .p(GAP_3)
+                                .rounded(ROUND_SM)
+                                .bg(k.chrome)
+                                .border_1()
+                                .border_color(k.border)
+                                .text_size(TEXT_XS)
+                                .font_family(cx.mono())
+                                .text_color(k.text_muted)
+                                .child(text),
+                        )
+                }))
         });
-        div().flex().flex_col().gap(GAP_0).child(intro).children(rows).into_any_element()
+        div().flex().flex_col().child(head).children(body).into_any_element()
+    }
+
+    /// Open or close a crate's details; the rows that change height are
+    /// measured again.
+    fn toggle_oss(&mut self, i: usize, cx: &mut Context<Self>) {
+        let before = self.oss_open.replace(i);
+        if before == Some(i) {
+            self.oss_open = None;
+        }
+        for c in [before, Some(i)].into_iter().flatten() {
+            if let Some(ix) = self.oss_shown.iter().position(|&x| x == c) {
+                self.oss_list.remeasure_items(ix + 1..ix + 2);
+            }
+        }
+        cx.notify();
     }
 
     fn start_recording(&mut self, action: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -747,6 +765,22 @@ fn crate_matches(c: &crate::open_source::Crate, query: &str) -> bool {
     query.to_lowercase().split_whitespace().all(|q| name.contains(q) || license.contains(q) || words.iter().any(|w| w.starts_with(q)))
 }
 
+/// A page's heading.
+fn page_title(s: Section, cx: &App) -> AnyElement {
+    let k = cx.ui();
+    div()
+        .flex()
+        .items_center()
+        .gap(GAP_2)
+        .pb(GAP_2)
+        .text_size(TEXT_LG)
+        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+        .text_color(k.heading)
+        .child(Icon::new(s.icon()).size(ICON_LG).text_color(k.text_muted))
+        .child(s.title())
+        .into_any_element()
+}
+
 /// Put one setting back to its default.
 fn reset_key(s: &mut Settings, key: &str) {
     let d = Settings::default();
@@ -767,6 +801,35 @@ fn reset_key(s: &mut Settings, key: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui_kit::TestAppContext;
+
+    #[gpui_kit::test]
+    fn one_page_at_a_time_and_crates_only_on_their_page(cx: &mut TestAppContext) {
+        let (ws, cx) = crate::test_support::workspace(cx, Vec::new());
+        ws.update_in(cx, |ws, window, cx| ws.show_tool(crate::dock::Tool::Settings, window, cx));
+        cx.run_until_parked();
+        // Appearance first; the crates are not gathered.
+        assert!(cx.debug_bounds("settings-page").is_some());
+        assert!(ws.read_with(cx, |ws, _| ws.settings_section == Section::Appearance && ws.oss_shown.is_empty()));
+        ws.update(cx, |ws, cx| {
+            ws.settings_section = Section::OpenSource;
+            cx.notify();
+        });
+        cx.run_until_parked();
+        assert_eq!(ws.read_with(cx, |ws, _| ws.oss_shown.len()), crate::open_source::CRATES.len());
+        // A search narrows the list in place.
+        ws.update_in(cx, |ws, window, cx| ws.settings_query.update(cx, |q, cx| q.set_value("serde", window, cx)));
+        cx.run_until_parked();
+        let shown = ws.read_with(cx, |ws, _| ws.oss_shown.clone());
+        assert!(!shown.is_empty() && shown.len() < crate::open_source::CRATES.len());
+        assert!(shown.iter().all(|&i| crate_matches(&crate::open_source::CRATES[i], "serde")));
+        // Opening one remeasures it without losing the list.
+        let first = shown[0];
+        ws.update(cx, |ws, cx| ws.toggle_oss(first, cx));
+        assert_eq!(ws.read_with(cx, |ws, _| ws.oss_open), Some(first));
+        ws.update(cx, |ws, cx| ws.toggle_oss(first, cx));
+        assert_eq!(ws.read_with(cx, |ws, _| ws.oss_open), None);
+    }
 
     #[test]
     fn search_finds_settings_by_title_key_or_words() {

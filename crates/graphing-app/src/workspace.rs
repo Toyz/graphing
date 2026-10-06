@@ -86,8 +86,11 @@ pub struct Workspace {
     pub(crate) settings_query: Entity<InputState>,
     pub(crate) recording: Option<String>,
     pub(crate) settings_focus: FocusHandle,
-    pub(crate) settings_scroll: gpui_kit::ScrollHandle,
-    pub(crate) settings_section: Option<crate::settings_pane::Section>,
+    pub(crate) settings_section: crate::settings_pane::Section,
+    /// The Open Source page's rows (built only while on screen), and the
+    /// crates it was last filled with.
+    pub(crate) oss_list: gpui_kit::ListState,
+    pub(crate) oss_shown: Vec<usize>,
     /// The crate expanded in Settings > Open Source, by index.
     pub(crate) oss_open: Option<usize>,
     /// Saved blocks, for the Shapes pane.
@@ -181,8 +184,9 @@ impl Workspace {
             settings_query,
             recording: None,
             settings_focus: cx.focus_handle(),
-            settings_scroll: gpui_kit::ScrollHandle::new(),
-            settings_section: None,
+            settings_section: crate::settings_pane::Section::Appearance,
+            oss_list: gpui_kit::ListState::new(0, gpui_kit::ListAlignment::Top, ROW_H * 10.0),
+            oss_shown: Vec::new(),
             oss_open: None,
             pin_open: None,
             blocks: crate::blocks::list(),

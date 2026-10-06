@@ -2,6 +2,7 @@
 //! gpui-component (menus, inputs, tooltips, scrollbars) in the same colors so
 //! nothing on screen comes from a different design.
 
+use gpui_kit::component::scroll::ScrollbarMode;
 use gpui_kit::component::theme::{Theme, ThemeMode, ThemeTokens};
 use gpui_kit::{App, Global, SharedString, Window};
 
@@ -115,4 +116,8 @@ pub fn install(dark: bool, window: Option<&mut Window>, cx: &mut App) {
     s.drag_border = k.accent;
     s.drop_target = k.accent_soft;
     t.tokens = ThemeTokens::from(t.colors);
+    // Scrollbars stay on screen, so a long pane says it scrolls. Going
+    // through the theme's update also hands the colors above to the
+    // scrollbar layer.
+    Theme::set_scrollbar_mode(ScrollbarMode::Always, cx);
 }

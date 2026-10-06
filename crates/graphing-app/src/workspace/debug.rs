@@ -28,16 +28,32 @@ impl Workspace {
         match name {
             "palette" => self.open_palette(window, cx),
             "templates" => self.open_templates(window, cx),
-            // `settings`, `settings:query`, and `settings:oss=name` with the
-            // Open Source entry `name` expanded.
+            // `settings`, `settings:page` (appearance, canvas, panels,
+            // shortcuts, extensions, oss), `settings:query`, and
+            // `settings:oss=name` with the Open Source entry `name` open.
             "settings" => {
+                use crate::settings_pane::Section;
                 self.show_tool(Tool::Settings, window, cx);
                 let (query, open) = arg.split_once('=').map_or((arg.as_str(), None), |(q, o)| (q, Some(o)));
-                let query = if query == "oss" { "open source" } else { query };
-                if !query.is_empty() {
-                    self.settings_query.update(cx, |s, cx| s.set_value(query.to_string(), window, cx));
+                let page = match query {
+                    "appearance" => Some(Section::Appearance),
+                    "canvas" => Some(Section::Canvas),
+                    "panels" => Some(Section::Panels),
+                    "shortcuts" => Some(Section::Shortcuts),
+                    "extensions" => Some(Section::Extensions),
+                    "oss" => Some(Section::OpenSource),
+                    _ => None,
+                };
+                match page {
+                    Some(p) => self.settings_section = p,
+                    None if !query.is_empty() => self.settings_query.update(cx, |s, cx| s.set_value(query.to_string(), window, cx)),
+                    None => {}
                 }
                 self.oss_open = open.and_then(|name| crate::open_source::CRATES.iter().position(|c| c.name == name));
+                if let Some(name) = open.filter(|_| self.oss_open.is_some()) {
+                    // Find it, so it is on screen.
+                    self.settings_query.update(cx, |s, cx| s.set_value(name.to_string(), window, cx));
+                }
             }
             // `library:containers` or `library:shapes` filters the Shapes pane.
             "library" => {
