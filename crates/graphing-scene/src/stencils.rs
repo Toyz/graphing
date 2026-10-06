@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, LazyLock, RwLock, RwLockReadGuard};
+use std::sync::{Arc, LazyLock, RwLock};
 
 use graphing_model::{Rect, Value};
 use serde::Deserialize;
@@ -473,7 +473,7 @@ pub const BUILTIN: [(&str, &str); 16] = [
 const DEFAULT_COMPARTMENTS: &[&str] =
     &["parts", "references", "values", "properties", "attributes", "operations", "constraints", "ports", "flows", "allocations"];
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Registry {
     stencils: Vec<StencilDef>,
     /// Full ids, aliases and core bare names -> index.
@@ -719,16 +719,19 @@ fn find_kind<'a, K>(kinds: &'a [K], name: &str, packs: &[String], key: impl Fn(&
     packs.iter().find_map(|p| of(p, name)).or_else(|| kinds.iter().rev().find(|k| key(k).1 == name))
 }
 
-static REGISTRY: LazyLock<RwLock<Registry>> = LazyLock::new(|| RwLock::new(Registry::builtin()));
+static REGISTRY: LazyLock<RwLock<Arc<Registry>>> = LazyLock::new(|| RwLock::new(Arc::new(Registry::builtin())));
 
-/// The live registry (built-in packs plus anything registered since).
-pub fn registry() -> RwLockReadGuard<'static, Registry> {
-    REGISTRY.read().unwrap_or_else(|e| e.into_inner())
+/// The live registry (built-in packs plus anything registered since), as a
+/// snapshot: no lock is held while it is used, so callers may nest freely
+/// and a pack registered meanwhile never blocks them.
+pub fn registry() -> Arc<Registry> {
+    REGISTRY.read().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 /// Add a pack from JSON text. Returns its id.
 pub fn register(text: &str, source: &str) -> Result<String, String> {
-    REGISTRY.write().unwrap_or_else(|e| e.into_inner()).add_json(text, source)
+    let mut slot = REGISTRY.write().unwrap_or_else(|e| e.into_inner());
+    Arc::make_mut(&mut slot).add_json(text, source)
 }
 
 /// Load every `<dir>/<id>/pack.json` (and `<dir>/*.json`). One message per
